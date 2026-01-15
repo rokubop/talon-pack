@@ -455,7 +455,7 @@ def create_or_update_manifest() -> None:
         print("Example: python manifest_builder.py ../package1 ../package2")
         sys.exit(1)
 
-    root_path = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    root_path = os.getcwd()
     CREATE_MANIFEST_DIRS = sys.argv[1:]
     print(f"Processing {len(CREATE_MANIFEST_DIRS)} package(s)...\n")
 
