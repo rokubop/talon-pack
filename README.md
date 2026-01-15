@@ -100,7 +100,7 @@ Parses Python files using AST to detect Talon actions, settings, tags, lists, mo
 | author | Package author name |
 | status | Recommended values: "development" (not ready for users), "experimental" (usable but expect breaking changes), "stable" (production-ready), "deprecated" (no longer maintained) |
 | tags | Category tags for the package |
-| dependencies | Required packages with versions (auto-generated) |
+| dependencies | Required packages with minimum versions (auto-generated, e.g. "0.10.0" means requires 0.10.0 or higher). Once set, versions are preserved - update manually if needed. |
 | devDependencies | Dev-only dependencies (manually move items here from `dependencies` if only needed for testing/development) |
 | contributes | Actions/settings/etc. this package provides (auto-generated) |
 | depends | Actions/settings/etc. this package uses (auto-generated) |
