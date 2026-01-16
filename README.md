@@ -1,6 +1,6 @@
 # Manifest Tools for Talon
 
-Generate a `manifest.json` and `_version.py` for your Talon package (folder) which includes Talon dependencies, contributions, versioning, and dependency checking.
+Provides scripts for generating a `manifest.json` and `_version.py` for your Talon package (folder) which includes Talon dependencies, contributions, versioning, and dependency checking.
 
 Also includes a script for generating installation instructions.
 
@@ -15,46 +15,31 @@ cd ~/.talon/user
 # windows
 cd ~/AppData/Roaming/talon/user
 
-git clone https://github.com/rokubop/manifest_builder
+git clone https://github.com/rokubop/talon-manifest-tools.git
 ```
 
-## Usage
-```bash
-cd talon-manifest-tools
+## Scripts
 
-# Primary script
-python generate_manifest.py ../talon-package # generates or updates ../talon-package/manifest.json
-python generate_manifest.py ../talon-package1 ../talon-package2 # example with multiple packages
-
-# Additional helper scripts
-python generate_version.py ../talon-package # generates ../talon-package/_version.py
-python generate_install_block.py ../talon-package # outputs install instructions
-```
-
-## Troubleshooting
-
-### Python Version Error
-
-The script requires **Python 3.12 or higher**. If you get a version error, you can use Talon's bundled Python 3.13 instead:
-
-**Windows:**
-```bash
-"C:\Program Files\Talon\python.exe" generate_manifest.py ../talon-package
-```
-
-**Mac:**
-```bash
-/Applications/Talon.app/Contents/Resources/python/bin/python3 generate_manifest.py ../talon-package
-```
-
-**Linux:**
-```bash
-~/.talon/bin/python3 generate_manifest.py ../talon-package
-```
-
-## How Manifest Generation Works
-
+### generate_manifest.py
 Parses Python files using AST to detect Talon actions, settings, tags, lists, modes, scopes, and captures you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported actions/settings to specific packages and their versions. Creates or updates manifest.json with all discovered information, preserving your manual edits to fields like name, description, etc.
+
+```bash
+python generate_manifest.py ../talon-package
+```
+
+### generate_version.py
+Generates a `_version.py` file that exposes your package version as a Talon action (e.g., `actions.user.my_package_version()`). Also includes automatic dependency validation on Talon startup, printing clear error messages if dependencies are missing or outdated with installation/update instructions.
+
+```bash
+python generate_version.py ../talon-package
+```
+
+### generate_install_block.py
+Outputs formatted installation instructions for your package based on your manifest.json, including dependency information. Useful for quickly generating README installation sections.
+
+```bash
+python generate_install_block.py ../talon-package
+```
 
 ## Example Manifest Output
 
@@ -112,3 +97,24 @@ Parses Python files using AST to detect Talon actions, settings, tags, lists, mo
 | _generatorVersion | Version of the generator tool |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` are auto-generated each time.
+
+## Troubleshooting
+
+### Python Version Error
+
+The script requires **Python 3.12 or higher**. If you get a version error, you can use Talon's bundled Python 3.13 instead:
+
+**Windows:**
+```bash
+"C:\Program Files\Talon\python.exe" generate_manifest.py ../talon-package
+```
+
+**Mac:**
+```bash
+/Applications/Talon.app/Contents/Resources/python/bin/python3 generate_manifest.py ../talon-package
+```
+
+**Linux:**
+```bash
+~/.talon/bin/python3 generate_manifest.py ../talon-package
+```
