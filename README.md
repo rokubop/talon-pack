@@ -1,8 +1,8 @@
-# Manifest builder for Talon
+# Manifest Tools for Talon
 
-Automatically generates a manifest.json for your Talon "package" (folder), discovering what actions, settings, and other features your package contributes and depends on, then resolving dependencies to specific package versions.
+Generate a manifest.json and _version.py for your Talon repo which includes talon dependencies, contributions, versioning, and dependency checking.
 
-Also includes scripts for generating version actions and installation instructions.
+Also includes a script for generating installation instructions.
 
 ## Installation
 
@@ -27,7 +27,7 @@ python generate_manifest.py ../talon-package # generates or updates ../talon-pac
 python generate_manifest.py ../talon-package1 ../talon-package2 # example with multiple packages
 
 # Additional helper scripts
-python generate_version_action.py ../talon-package # generates ../talon-package/talon_package_version.py
+python generate_version.py ../talon-package # generates ../talon-package/_version.py
 python generate_install_block.py ../talon-package # outputs install instructions
 ```
 
