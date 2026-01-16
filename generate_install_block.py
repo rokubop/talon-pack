@@ -45,34 +45,44 @@ def generate_installation_instructions(package_dir: str):
 
     print("```")
 
+    # Handle runtime dependencies
     if dependencies:
         print("\n### Dependencies\n")
-        print(f"This package requires the following dependencies:\n")
+        print("This package requires the following dependencies:\n")
 
-        # Try to find dependency manifests to get their github URLs
-        user_dir = os.path.dirname(os.path.dirname(full_package_dir))
-
-        for dep_name, dep_version in dependencies.items():
-            dep_github = None
-
-            # Search for dependency manifest
-            for root, dirs, files in os.walk(user_dir):
-                if 'manifest.json' in files:
-                    try:
-                        dep_manifest_path = os.path.join(root, 'manifest.json')
-                        with open(dep_manifest_path, 'r', encoding='utf-8') as f:
-                            dep_manifest = json.load(f)
-
-                        if dep_manifest.get('name') == dep_name:
-                            dep_github = dep_manifest.get('github', '')
-                            break
-                    except:
-                        continue
-
-            if dep_github:
-                print(f"- **{dep_name}** (v{dep_version}): `git clone {dep_github}`")
+        for dep_name, dep_info in dependencies.items():
+            version = dep_info.get('version', 'unknown')
+            github = dep_info.get('github', '')
+            
+            if github:
+                print(f"- **{dep_name}** (v{version}+)")
+                print(f"  ```sh")
+                print(f"  git clone {github}")
+                print(f"  ```")
             else:
-                print(f"- **{dep_name}** (v{dep_version})")
+                print(f"- **{dep_name}** (v{version}+)")
+
+    # Handle development dependencies
+    dev_dependencies = manifest.get('devDependencies', {})
+    if dev_dependencies:
+        print("\n### Development Dependencies\n")
+        print("Optional dependencies for development and testing:\n")
+
+        for dep_name, dep_info in dev_dependencies.items():
+            version = dep_info.get('version', 'unknown')
+            github = dep_info.get('github', '')
+            
+            if github:
+                print(f"- **{dep_name}** (v{version}+)")
+                print(f"  ```sh")
+                print(f"  git clone {github}")
+                print(f"  ```")
+            else:
+                print(f"- **{dep_name}** (v{version}+)")
+
+    if dependencies or dev_dependencies:
+        print("\n> **Note**: Review code from unfamiliar sources before installing.")
+        print("> Restart Talon after installing dependencies.")
 
     print("\n" + "=" * 60 + "\n")
 
