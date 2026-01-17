@@ -97,7 +97,7 @@ python generate_install_block.py ../talon-package
 | depends | Auto-generated. Actions/settings/tags/modes/etc. this package uses |
 | _generator | Generator e.g. "talon-manifest-generator" |
 | _generatorVersion | Version of the generator |
-| _generatorRequireVersionAction | Whether the generator should require a version action (default: true if namespace exists). Set to false to disable version action requirement check |
+| _generatorRequiresVersionAction | Whether the generator should require a version action (default: true if namespace exists). Set to false to disable version action requirement check |
 | _generatorStrictNamespace | Whether the generator should validate namespace consistency (default: true). Set to false to allow multiple namespaces and skip validation warnings. Useful for collection packages like talon-community |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` are auto-generated each time.

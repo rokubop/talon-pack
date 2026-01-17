@@ -1,6 +1,5 @@
 import ast
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import json
 import os
 import re
@@ -36,7 +35,7 @@ Manifest fields:
 - depends: Actions/settings/etc. this package uses (auto-generated)
 - _generator: Tool that generated this manifest (auto-added)
 - _generatorVersion: Version of the generator tool (auto-added)
-- _generatorRequireVersionAction: Whether generator should require version action (auto-added)
+- _generatorRequiresVersionAction: Whether generator should require version action (auto-added)
 - _generatorStrictNamespace: Whether generator should validate namespace consistency (default: true, auto-added)
 """
 
@@ -522,7 +521,7 @@ def check_version_action(namespace: str, contributes: Entities, version_check: b
         if not os.path.exists(version_file):
             print(f"\nERROR: Missing required version action '{expected_action}'")
             print(f"   Run: python generate_version.py {package_name}")
-            print(f"   Or set \"_generatorRequireVersionAction\": false in manifest.json to skip this check")
+            print(f"   Or set \"_generatorRequiresVersionAction\": false in manifest.json to skip this check")
             print()
             return 1
         else:
@@ -651,7 +650,7 @@ def create_or_update_manifest() -> None:
                 total_warnings += validate_namespace(namespace, new_entity_data.contributes, strict_namespace)
 
             # Check version action
-            version_check = existing_manifest_data.get("_generatorRequireVersionAction", True)
+            version_check = existing_manifest_data.get("_generatorRequiresVersionAction", True)
             if namespace:  # Only check if package has a namespace
                 total_errors += check_version_action(namespace, new_entity_data.contributes, version_check, package_name, full_package_dir)
 
@@ -749,7 +748,7 @@ def create_or_update_manifest() -> None:
                 "tags": existing_manifest_data.get("tags", []),
             }
 
-            # Determine default for _generatorRequireVersionAction
+            # Determine default for _generatorRequiresVersionAction
             # If no namespace or this is a new manifest with no namespace, default to False
             # Otherwise preserve existing value or default to True
             default_require_version = bool(namespace) if is_new_manifest else True
@@ -771,7 +770,7 @@ def create_or_update_manifest() -> None:
             new_manifest_data.update({
                 "_generator": "talon-manifest-generator",
                 "_generatorVersion": get_generator_version(),
-                "_generatorRequireVersionAction": existing_manifest_data.get("_generatorRequireVersionAction", default_require_version),
+                "_generatorRequiresVersionAction": existing_manifest_data.get("_generatorRequiresVersionAction", default_require_version),
                 "_generatorStrictNamespace": existing_manifest_data.get("_generatorStrictNamespace", True)
             })
 

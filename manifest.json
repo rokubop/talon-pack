@@ -17,6 +17,6 @@
   "validateDependencies": false,
   "_generator": "talon-manifest-generator",
   "_generatorVersion": "2.0.0",
-  "_generatorRequireVersionAction": false,
+  "_generatorRequiresVersionAction": false,
   "_generatorStrictNamespace": true
 }
