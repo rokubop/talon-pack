@@ -27,7 +27,7 @@ Manifest fields:
 - author: Package author name
 - tags: Category tags for the package
 - requiresTalonBeta: Whether package requires Talon beta - attempts to auto detect if this is not yet set (first run), otherwise preserves existing setting
-- dependencyCheck: Whether to validate dependencies at runtime (default: true)
+- validateDependencies: Whether to validate dependencies at runtime (default: true)
   - true: Print errors on startup if dependencies not met
   - false: Skip dependency validation
 - dependencies: Required packages with versions (auto-generated)
@@ -747,14 +747,7 @@ def create_or_update_manifest() -> None:
                 "preview": existing_manifest_data.get("preview", ""),
                 "author": existing_manifest_data.get("author", ""),
                 "tags": existing_manifest_data.get("tags", []),
-                "requiresTalonBeta": requires_talon_beta,
             }
-
-            # Only include dependencyCheck if user explicitly set it or there are dependencies
-            if "dependencyCheck" in existing_manifest_data:
-                new_manifest_data["dependencyCheck"] = existing_manifest_data["dependencyCheck"]
-            elif package_dependencies:
-                new_manifest_data["dependencyCheck"] = True
 
             # Determine default for _generatorRequireVersionAction
             # If no namespace or this is a new manifest with no namespace, default to False
@@ -766,6 +759,16 @@ def create_or_update_manifest() -> None:
                 "devDependencies": existing_manifest_data.get("devDependencies", {}),
                 "contributes": vars(new_entity_data.contributes),
                 "depends": vars(new_entity_data.depends),
+                "requiresTalonBeta": requires_talon_beta,
+            })
+
+            # Only include validateDependencies if user explicitly set it or there are dependencies
+            if "validateDependencies" in existing_manifest_data:
+                new_manifest_data["validateDependencies"] = existing_manifest_data["validateDependencies"]
+            elif package_dependencies:
+                new_manifest_data["validateDependencies"] = True
+
+            new_manifest_data.update({
                 "_generator": "talon-manifest-tools",
                 "_generatorVersion": get_generator_version(),
                 "_generatorRequireVersionAction": existing_manifest_data.get("_generatorRequireVersionAction", default_require_version),

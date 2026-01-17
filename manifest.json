@@ -9,7 +9,7 @@
   "preview": "",
   "author": "Roku",
   "tags": [],
-  "dependencyCheck": false,
+  "validateDependencies": false,
   "dependencies": {},
   "devDependencies": {},
   "contributes": {},

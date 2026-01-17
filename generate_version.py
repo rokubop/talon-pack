@@ -69,7 +69,7 @@ def generate_version_action(package_dir: str, force: bool = False) -> None:
     package_name = manifest.get('name', os.path.basename(full_package_dir))
     generator_version = get_generator_version()
     has_dependencies = bool(manifest.get('dependencies'))
-    dependency_check = manifest.get('dependencyCheck', True)
+    dependency_check = manifest.get('validateDependencies', True)
 
     # Check if file already exists and compare versions
     version_file_path = os.path.join(full_package_dir, '_version.py')
@@ -131,7 +131,7 @@ def validate_dependencies():
         with open(os.path.join(os.path.dirname(__file__), 'manifest.json'), 'r') as f:
             data = json.load(f)
 
-        if not data.get('dependencyCheck', True):
+        if not data.get('validateDependencies', True):
             return
 
         deps = data.get('dependencies', {{}})
