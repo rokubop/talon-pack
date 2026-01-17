@@ -26,6 +26,7 @@ Manifest fields:
 - preview: Preview image URL
 - author: Package author name
 - tags: Category tags for the package
+- requiresTalonBeta: Whether package requires Talon beta - attempts to auto detect if this is not yet set (first run), otherwise preserves existing setting
 - dependencyCheck: Whether to validate dependencies at runtime (default: true)
   - true: Print errors on startup if dependencies not met
   - false: Skip dependency validation
@@ -36,6 +37,7 @@ Manifest fields:
 - _generator: Tool that generated this manifest (auto-added)
 - _generatorVersion: Version of the generator tool (auto-added)
 - _generatorRequireVersionAction: Whether generator should require version action (auto-added)
+- _generatorStrictNamespace: Whether generator should validate namespace consistency (default: true, auto-added)
 """
 
 def get_generator_version() -> str:
@@ -75,6 +77,7 @@ class Entities:
 class AllEntities:
     contributes: Entities = field(default_factory=Entities)
     depends: Entities = field(default_factory=Entities)
+    requires_beta: bool = False
 
 class ParentNodeVisitor(ast.NodeVisitor):
     """A helper visitor class to set the parent attribute for each node."""
@@ -187,6 +190,10 @@ class EntityVisitor(ParentNodeVisitor):
     def visit_Call(self, node):
         try:
             if isinstance(node.func, ast.Attribute):
+                # Check for beta features: *.dynamic_list( (ctx, app_ctx, etc.)
+                if node.func.attr == 'dynamic_list' and isinstance(node.func.value, ast.Name):
+                    self.all_entities.requires_beta = True
+
                 func_attr = node.func.attr
                 if func_attr in MOD_ATTR_CALLS:
                     entity_name = None
@@ -226,6 +233,20 @@ class EntityVisitor(ParentNodeVisitor):
         finally:
             self.generic_visit(node)
 
+    def visit_Subscript(self, node):
+        try:
+            # Check for beta features: *ctx.selections[ (ctx, app_ctx, etc.)
+            # Only match if variable name contains 'ctx' to avoid false positives
+            if isinstance(node.value, ast.Attribute) and node.value.attr == 'selections':
+                if isinstance(node.value.value, ast.Name):
+                    var_name = node.value.value.id
+                    if 'ctx' in var_name.lower():
+                        self.all_entities.requires_beta = True
+        except Exception as e:
+            print(f"Error processing subscript: {e}")
+        finally:
+            self.generic_visit(node)
+
 def parse_file(file_path: str, all_entities: AllEntities) -> None:
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -235,6 +256,33 @@ def parse_file(file_path: str, all_entities: AllEntities) -> None:
         visitor.visit(tree)
     except Exception as e:
         print(f"Error parsing {file_path}: {e}")
+
+def check_requires_talon_beta_in_talon_files(folder_path: str) -> bool:
+    """
+    Check if .talon files use beta features.
+    Detects: 'parrot(', 'face(', 'deck('
+    (Python beta features are detected during AST parsing)
+
+    Returns:
+        True if beta features detected, False otherwise
+    """
+    talon_beta_keywords = ['parrot(', 'face(', 'deck(']
+
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith('.talon'):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content_lower = f.read().lower()
+                        for keyword in talon_beta_keywords:
+                            if keyword in content_lower:
+                                return True
+                except Exception as e:
+                    # Skip files that can't be read
+                    pass
+
+    return False
 
 def process_folder(folder_path: str) -> AllEntities:
     all_entities = AllEntities()
@@ -394,7 +442,7 @@ def infer_namespace_from_package_name(package_name: str) -> str:
     namespace = ''.join(c for c in namespace if c.isalnum() or c == '_')
     return namespace.lower()
 
-def validate_namespace(namespace: str, contributes: Entities) -> int:
+def validate_namespace(namespace: str, contributes: Entities, strict: bool = True) -> int:
     """
     Validates that contributed entities match the expected namespace pattern.
     Prints warnings for any entities that don't follow the pattern.
@@ -404,9 +452,17 @@ def validate_namespace(namespace: str, contributes: Entities) -> int:
     - user.my_package (exact match), or
     - user.my_package_something (prefixed)
 
+    Args:
+        namespace: Expected namespace pattern
+        contributes: Contributed entities to validate
+        strict: If False, skip validation entirely
+
     Returns:
         Number of warnings found
     """
+    if not strict:
+        return 0
+
     warnings = []
 
     # Strip 'user.' prefix for comparison
@@ -560,11 +616,15 @@ def create_or_update_manifest() -> None:
 
             package_name = os.path.basename(full_package_dir)
 
+            # Check strict namespace setting
+            strict_namespace = existing_manifest_data.get("_generatorStrictNamespace", True)
+
             # Use existing namespace if present, otherwise infer from contributed entities
             namespace = existing_manifest_data.get("namespace")
-            if not namespace:
+            if not namespace and strict_namespace:
+                # Only infer namespace if strict mode is enabled
                 namespace = infer_namespace_from_entities(new_entity_data.contributes)
-            if not namespace:
+            if not namespace and strict_namespace:
                 # Check if anything is contributed
                 has_contributions = any([
                     new_entity_data.contributes.actions,
@@ -586,9 +646,9 @@ def create_or_update_manifest() -> None:
             if namespace and not namespace.startswith('user.'):
                 namespace = f"user.{namespace}"
 
-            # Validate namespace only if there are contributions
-            if namespace:
-                total_warnings += validate_namespace(namespace, new_entity_data.contributes)
+            # Validate namespace only if strict mode is enabled and there are contributions
+            if namespace and strict_namespace:
+                total_warnings += validate_namespace(namespace, new_entity_data.contributes, strict_namespace)
 
             # Check version action
             version_check = existing_manifest_data.get("_generatorRequireVersionAction", True)
@@ -657,6 +717,16 @@ def create_or_update_manifest() -> None:
             else:
                 print(f"No package dependencies\n")
 
+            # Check if package requires Talon beta
+            # Only auto-detect if not manually set in existing manifest
+            if "requiresTalonBeta" in existing_manifest_data:
+                requires_talon_beta = existing_manifest_data["requiresTalonBeta"]
+            else:
+                # Python beta features detected during AST parsing, check .talon files here
+                requires_talon_beta = new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir)
+                if requires_talon_beta:
+                    print(f"Package requires Talon beta\n")
+
             # Generate title from package name if this is a new manifest
             default_title = ""
             if is_new_manifest:
@@ -677,6 +747,7 @@ def create_or_update_manifest() -> None:
                 "preview": existing_manifest_data.get("preview", ""),
                 "author": existing_manifest_data.get("author", ""),
                 "tags": existing_manifest_data.get("tags", []),
+                "requiresTalonBeta": requires_talon_beta,
             }
 
             # Only include dependencyCheck if user explicitly set it or there are dependencies
@@ -697,7 +768,8 @@ def create_or_update_manifest() -> None:
                 "depends": vars(new_entity_data.depends),
                 "_generator": "talon-manifest-tools",
                 "_generatorVersion": get_generator_version(),
-                "_generatorRequireVersionAction": existing_manifest_data.get("_generatorRequireVersionAction", default_require_version)
+                "_generatorRequireVersionAction": existing_manifest_data.get("_generatorRequireVersionAction", default_require_version),
+                "_generatorStrictNamespace": existing_manifest_data.get("_generatorStrictNamespace", True)
             })
 
             new_manifest_data = prune_manifest_data(new_manifest_data)
@@ -715,9 +787,23 @@ def create_or_update_manifest() -> None:
                             existing_version = first_lines.split('v')[1].split('"')[0].split('\n')[0].strip()
                             current_version = get_generator_version()
                             if existing_version != current_version:
-                                rel_path = os.path.relpath(full_package_dir)
-                                print(f"⚠ _version.py is outdated (v{existing_version})")
-                                print(f"  Run: py generate_version.py {rel_path}")
+                                # Only warn on major or minor version changes, skip patch updates
+                                should_warn = False
+                                existing_parts = existing_version.split('.')
+                                current_parts = current_version.split('.')
+
+                                if len(existing_parts) >= 2 and len(current_parts) >= 2:
+                                    existing_major_minor = f"{existing_parts[0]}.{existing_parts[1]}"
+                                    current_major_minor = f"{current_parts[0]}.{current_parts[1]}"
+                                    should_warn = existing_major_minor != current_major_minor
+                                else:
+                                    # Can't parse version, show warning
+                                    should_warn = True
+
+                                if should_warn:
+                                    rel_path = os.path.relpath(full_package_dir)
+                                    print(f"⚠ _version.py is outdated (v{existing_version}, current: v{current_version})")
+                                    print(f"  Run: py generate_version.py {rel_path}")
                 except:
                     pass
 
