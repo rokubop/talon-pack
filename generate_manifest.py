@@ -596,10 +596,13 @@ def create_or_update_manifest() -> None:
     total_warnings = 0
     total_errors = 0
 
-    for relative_dir in CREATE_MANIFEST_DIRS:
+    for idx, relative_dir in enumerate(CREATE_MANIFEST_DIRS):
         full_package_dir = os.path.abspath(os.path.join(root_path, relative_dir))
 
         if os.path.isdir(full_package_dir):
+            package_name = os.path.basename(full_package_dir)
+            print(f"[{idx + 1}/{len(CREATE_MANIFEST_DIRS)}] Processing {package_name}")
+
             existing_manifest_data = load_existing_manifest(full_package_dir)
             is_new_manifest = not existing_manifest_data
             new_entity_data = entity_extract(full_package_dir)
@@ -612,8 +615,6 @@ def create_or_update_manifest() -> None:
                 ])
                 setattr(new_entity_data.contributes, key, contributes_set)
                 setattr(new_entity_data.depends, key, depends_filtered)
-
-            package_name = os.path.basename(full_package_dir)
 
             # Check strict namespace setting
             strict_namespace = existing_manifest_data.get("_generatorStrictNamespace", True)
@@ -776,8 +777,12 @@ def create_or_update_manifest() -> None:
 
             new_manifest_data = prune_manifest_data(new_manifest_data)
             update_manifest(full_package_dir, new_manifest_data)
-            manifest_path = os.path.join(full_package_dir, 'manifest.json')
+            manifest_path = os.path.join(relative_dir, 'manifest.json').replace('\\', '/')
             print(f"Manifest updated: {manifest_path}")
+
+            # Add separator if there are more packages to process
+            if idx < len(CREATE_MANIFEST_DIRS) - 1:
+                print()
 
             # Check if _version.py needs updating
             version_file_path = os.path.join(full_package_dir, '_version.py')
