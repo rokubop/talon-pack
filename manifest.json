@@ -1,7 +1,7 @@
 {
   "name": "talon-manifest-generator",
   "title": "Talon Manifest Generator",
-  "description": "Generates manifest.json and _version.py for Talon packages with automatic dependency detection",
+  "description": "Scripts for generating package-like files for your Talon repo such as manifest.json and _version.py with automatic detection for contributions and dependencies",
   "version": "2.0.0",
   "status": "preview",
   "namespace": "",
