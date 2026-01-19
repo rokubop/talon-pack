@@ -44,6 +44,23 @@ def get_existing_generator_version(version_file_path: str) -> str | None:
         pass
     return None
 
+def add_version_action_to_manifest(manifest_path: str, action_name: str) -> None:
+    version_action = f"user.{action_name}_version"
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        manifest = json.load(f)
+
+    if 'contributes' not in manifest:
+        manifest['contributes'] = {}
+    if 'actions' not in manifest['contributes']:
+        manifest['contributes']['actions'] = []
+
+    if version_action not in manifest['contributes']['actions']:
+        manifest['contributes']['actions'].append(version_action)
+        manifest['contributes']['actions'].sort()
+
+        with open(manifest_path, 'w', encoding='utf-8') as f:
+            json.dump(manifest, f, indent=2)
+
 def generate_version_action(package_dir: str, force: bool = False) -> None:
     """Generate version action file for a package"""
     full_package_dir = os.path.abspath(package_dir)
@@ -91,11 +108,12 @@ def generate_version_action(package_dir: str, force: bool = False) -> None:
 
     # Check if file already exists and compare versions
     version_file_path = os.path.join(full_package_dir, '_version.py')
+    version_file_exists = os.path.exists(version_file_path)
     existing_version = get_existing_generator_version(version_file_path)
 
     # Force regeneration if dependency state changed
     needs_regen = False
-    if os.path.exists(version_file_path):
+    if version_file_exists:
         with open(version_file_path, 'r', encoding='utf-8') as f:
             existing_content = f.read()
             has_validation_code = 'validate_dependencies' in existing_content
@@ -211,6 +229,9 @@ app.register("ready", validate_dependencies)
     # Write the version file
     with open(version_file_path, 'w', encoding='utf-8') as f:
         f.write(version_file_content)
+
+    if not version_file_exists and action_name:
+        add_version_action_to_manifest(manifest_path, action_name)
 
     display_path = version_file_path.replace('\\', '/')
     print(f"\nGenerated: {display_path}")

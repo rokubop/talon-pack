@@ -62,10 +62,6 @@ def generate_shields(manifest: dict) -> list[str]:
         license_escaped = license_type.replace("-", "--")
         shields.append(f"![License](https://img.shields.io/badge/license-{license_escaped}-green)")
 
-    # Requires Talon Beta badge (if true)
-    if manifest.get("requires_talon_beta") or manifest.get("requiresTalonBeta"):
-        shields.append("![Talon Beta](https://img.shields.io/badge/talon%20beta-required-red)")
-
     return shields
 
 
@@ -77,94 +73,25 @@ def update_readme(readme_path: Path, manifest: dict) -> bool:
     with open(readme_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    original_content = content
-    updated = False
-
-    # Update version shield
-    version = manifest.get("version", "0.0.0").replace("-", "--")
-    version_pattern = r"!\[Version\]\(https://img\.shields\.io/badge/version-[^\)]+\)"
-    version_shield = f"![Version](https://img.shields.io/badge/version-{version}-blue)"
-    if re.search(version_pattern, content):
-        content = re.sub(version_pattern, version_shield, content)
-        updated = True
-
-    # Update status shield
-    status = manifest.get("status", "unknown").lower().replace("-", "--")
-    status_color = STATUS_COLORS.get(status, "lightgrey")
-    status_pattern = r"!\[Status\]\(https://img\.shields\.io/badge/status-[^\)]+\)"
-    status_shield = f"![Status](https://img.shields.io/badge/status-{status}-{status_color})"
-    if re.search(status_pattern, content):
-        content = re.sub(status_pattern, status_shield, content)
-        updated = True
-
-    # Update or add platform shield
-    platforms = manifest.get("platforms")
-    platform_pattern = r"!\[Platform\]\(https://img\.shields\.io/badge/platform-[^\)]+\)"
-    if platforms:
-        platform_str = "%20%7C%20".join(p.replace("-", "--") for p in platforms)
-        platform_shield = f"![Platform](https://img.shields.io/badge/platform-{platform_str}-lightgrey)"
-        if re.search(platform_pattern, content):
-            content = re.sub(platform_pattern, platform_shield, content)
-            updated = True
-        elif re.search(status_pattern, original_content):
-            # Add platform shield after status if it doesn't exist
-            content = re.sub(status_pattern, f"{status_shield}\n{platform_shield}", content)
-            updated = True
-
-    # Update or add license shield
-    license_type = manifest.get("license")
-    license_pattern = r"!\[License\]\(https://img\.shields\.io/badge/license-[^\)]+\)"
-    if license_type:
-        license_escaped = license_type.replace("-", "--")
-        license_shield = f"![License](https://img.shields.io/badge/license-{license_escaped}-green)"
-        if re.search(license_pattern, content):
-            content = re.sub(license_pattern, license_shield, content)
-            updated = True
-        elif re.search(status_pattern, original_content):
-            # Add license shield after platform if it exists, otherwise after status
-            if platforms and re.search(platform_pattern, content):
-                content = re.sub(platform_pattern, f"{platform_shield}\n{license_shield}", content)
-            else:
-                content = re.sub(status_pattern, f"{status_shield}\n{license_shield}", content)
-            updated = True
-    else:
-        # Remove license shield if it exists but not set
-        if re.search(license_pattern, content):
-            content = re.sub(license_pattern + r"\n?", "", content)
-            updated = True
-
-    # Update, add, or remove Talon Beta shield
-    beta_pattern = r"!\[Talon Beta\]\(https://img\.shields\.io/badge/talon%20beta-[^\)]+\)"
-    requires_beta = manifest.get("requires_talon_beta") or manifest.get("requiresTalonBeta")
-    if requires_beta:
-        beta_shield = "![Talon Beta](https://img.shields.io/badge/talon%20beta-required-red)"
-        if re.search(beta_pattern, content):
-            content = re.sub(beta_pattern, beta_shield, content)
-            updated = True
-        elif re.search(status_pattern, original_content):
-            # Add beta shield after license/platform/status (whichever comes last)
-            if license_type and re.search(license_pattern, content):
-                # Insert after license
-                content = re.sub(license_pattern, f"{license_shield}\n{beta_shield}", content)
-            elif platforms and re.search(platform_pattern, content):
-                # Insert after platform
-                content = re.sub(platform_pattern, f"{platform_shield}\n{beta_shield}", content)
-            else:
-                # Insert after status
-                content = re.sub(status_pattern, f"{status_shield}\n{beta_shield}", content)
-            updated = True
-    else:
-        # Remove beta shield if it exists but not required
-        if re.search(beta_pattern, content):
-            content = re.sub(beta_pattern + r"\n?", "", content)
-            updated = True
-
-    if updated:
-        with open(readme_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        return True
-
-    return False
+    # Pattern to match any shield badge
+    shield_pattern = r"!\[[^\]]+\]\(https://img\.shields\.io/badge/[^\)]+\)"
+    
+    # Check if shields exist
+    if not re.search(shield_pattern, content):
+        return False
+    
+    # Generate new shields
+    new_shields = generate_shields(manifest)
+    new_shields_block = "\n".join(new_shields)
+    
+    # Find all consecutive shields and replace as a block
+    shield_block_pattern = r"(?:" + shield_pattern + r"\s*)+"
+    content = re.sub(shield_block_pattern, new_shields_block + "\n\n", content, count=1)
+    
+    with open(readme_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    
+    return True
 
 
 def print_display_block(shields: list[str]):

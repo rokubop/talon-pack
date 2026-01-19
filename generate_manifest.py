@@ -85,6 +85,7 @@ class AllEntities:
     contributes: Entities = field(default_factory=Entities)
     depends: Entities = field(default_factory=Entities)
     requires_beta: bool = False
+    requires: set = field(default_factory=set)
 
 class ParentNodeVisitor(ast.NodeVisitor):
     """A helper visitor class to set the parent attribute for each node."""
@@ -448,6 +449,26 @@ def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
         for match in re.finditer(settings_get_pattern, command_body):
             all_entities.depends.settings.add(match.group(1))
 
+        # ==============================================================================
+        # REQUIREMENTS DETECTION
+        # ==============================================================================
+
+        # Detect gamepad requirement: gamepad(
+        if re.search(r'\bgamepad\s*\(', command_body):
+            all_entities.requires.add("gamepad")
+
+        # Detect Stream Deck requirement: deck(
+        if re.search(r'\bdeck\s*\(', command_body):
+            all_entities.requires.add("streamDeck")
+
+        # Detect parrot requirement: parrot(
+        if re.search(r'\bparrot\s*\(', command_body):
+            all_entities.requires.add("parrot")
+
+        # Detect webcam requirement: face(
+        if re.search(r'\bface\s*\(', command_body):
+            all_entities.requires.add("webcam")
+
     except Exception as e:
         print(f"Error parsing {file_path}: {e}")
 
@@ -460,11 +481,19 @@ def process_folder(folder_path: str) -> tuple[AllEntities, int, int]:
     Walk through a folder and parse all .py and .talon files to extract entities.
     Returns (all_entities, py_file_count, talon_file_count)
     """
+    SKIP_DIRS = {
+        'node_modules', '.git', '__pycache__', '.venv', 'venv',
+        '.pytest_cache', '.mypy_cache', 'dist', 'build', '.vscode',
+        '.idea', 'recordings', 'backup', '.subtrees'
+    }
+
     all_entities = AllEntities()
     py_count = 0
     talon_count = 0
 
-    for root, _, files in os.walk(folder_path):
+    for root, dirs, files in os.walk(folder_path):
+        # Modify dirs in-place to skip unwanted directories
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
         for file in files:
             file_path = os.path.join(root, file)
             if file.endswith('.py'):
@@ -492,7 +521,7 @@ def scan_all_manifests(talon_root: str) -> dict:
     SKIP_DIRS = {
         'node_modules', '.git', '__pycache__', '.venv', 'venv',
         '.pytest_cache', '.mypy_cache', 'dist', 'build', '.vscode',
-        '.idea', 'recordings', 'backup'
+        '.idea', 'recordings', 'backup', '.subtrees'
     }
 
     entity_to_package = {}
@@ -961,13 +990,21 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
             print()
 
             # Check if package requires Talon beta
-            # Only auto-detect if not manually set in existing manifest
-            if "requiresTalonBeta" in existing_manifest_data:
-                requires_talon_beta = existing_manifest_data["requiresTalonBeta"]
+            requires_set = set(new_entity_data.requires)  # Start with detected hardware requirements
+            
+            # Check for eye tracker requirement based on tracking.* actions
+            all_actions = set(new_entity_data.depends.actions) | set(new_entity_data.contributes.actions)
+            if any(action.startswith('tracking.') for action in all_actions):
+                requires_set.add("eyeTracker")
+            
+            # Handle Talon beta requirement (preserve existing or auto-detect)
+            if "requires" in existing_manifest_data and "talonBeta" in existing_manifest_data["requires"]:
+                requires_set.add("talonBeta")
             else:
-                # Python beta features detected during AST parsing, check .talon files here
+                # Auto-detect Talon beta requirement
                 requires_talon_beta = new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir)
                 if requires_talon_beta:
+                    requires_set.add("talonBeta")
                     print(f"Package requires Talon beta\n")
 
             # Generate title from package name if this is a new manifest
@@ -1027,11 +1064,11 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
                 default_require_version = existing_manifest_data.get("_generatorRequiresVersionAction", True)
 
             new_manifest_data.update({
+                "requires": sorted(list(requires_set)),
                 "dependencies": package_dependencies,
                 "devDependencies": existing_manifest_data.get("devDependencies", {}),
                 "contributes": vars(new_entity_data.contributes),
                 "depends": vars(new_entity_data.depends),
-                "requiresTalonBeta": requires_talon_beta,
             })
 
             # Only include validateDependencies if user explicitly set it or there are dependencies

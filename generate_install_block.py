@@ -8,26 +8,50 @@ def generate_installation_markdown(manifest: dict) -> str:
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
     dev_dependencies = manifest.get('devDependencies', {})
-    requires_talon_beta = manifest.get('requiresTalonBeta', False)
+    requires = manifest.get('requires', [])
+
+    # Map requirement keys to user-friendly descriptions
+    requirement_descriptions = {
+        "talonBeta": "[**Talon Beta**](https://talon.wiki/Help/beta_talon/)",
+        "gamepad": "**Gamepad** - Physical gamepad or joystick controller",
+        "streamDeck": "**Elgato Stream Deck** - Elgato Stream Deck device (button panel or pedal)",
+        "parrot": "**Parrot** - Trained parrot noise model for voice commands",
+        "eyeTracker": "**Eye Tracker** - Eye tracking device (e.g., Tobii 4C or Tobii 5)",
+        "webcam": "**Webcam** - Camera for face tracking commands"
+    }
 
     lines = ["## Installation"]
 
-    # Dependencies section
-    if requires_talon_beta or dependencies:
-        lines.append("\n### Dependencies")
-        lines.append("\nThis repo requires:")
-
-        # Talon Beta requirement first
-        if requires_talon_beta:
-            lines.append("- [**Talon Beta**](https://talon.wiki/Help/beta_talon/)")
-
-        for dep_name, dep_info in dependencies.items():
-            version = dep_info.get('version', 'unknown')
-            github = dep_info.get('github', '')
-            if github:
-                lines.append(f"- [**{dep_name}**]({github}) (v{version}+)")
-            else:
-                lines.append(f"- **{dep_name}** (v{version}+)")
+    # Combine Requirements and Dependencies sections if both exist
+    has_requirements = bool(requires)
+    has_dependencies = bool(dependencies)
+    
+    if has_requirements or has_dependencies:
+        # Decide section title
+        if has_requirements and has_dependencies:
+            lines.append("\n### Requirements & Dependencies")
+        elif has_requirements:
+            lines.append("\n### Requirements")
+        else:
+            lines.append("\n### Dependencies")
+        
+        lines.append("")
+        
+        # Add requirements
+        if has_requirements:
+            for req in requires:
+                description = requirement_descriptions.get(req, f"**{req}**")
+                lines.append(f"- {description}")
+        
+        # Add dependencies
+        if has_dependencies:
+            for dep_name, dep_info in dependencies.items():
+                version = dep_info.get('version', 'unknown')
+                github = dep_info.get('github', '')
+                if github:
+                    lines.append(f"- [**{dep_name}**]({github}) (v{version}+)")
+                else:
+                    lines.append(f"- **{dep_name}** (v{version}+)")
 
     # Dev dependencies section
     if dev_dependencies:
@@ -43,10 +67,10 @@ def generate_installation_markdown(manifest: dict) -> str:
                 lines.append(f"- **{dep_name}** (v{version}+)")
 
     # Install section
-    if requires_talon_beta or dependencies or dev_dependencies:
+    if requires or dependencies or dev_dependencies:
         lines.append("\n### Install")
 
-    if requires_talon_beta or dependencies:
+    if dependencies:
         lines.append("\nClone the dependencies and this repo into your [Talon](https://talonvoice.com/) user directory:")
     else:
         lines.append("\nClone this repo into your [Talon](https://talonvoice.com/) user directory:")

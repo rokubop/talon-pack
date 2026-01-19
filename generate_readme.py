@@ -93,10 +93,10 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
             content = content[:title_end] + shields_text + content[title_end:].lstrip()
             actions.append("added shields after title")
         else:
-            # No title found, add at end
-            shields_text = "\n\n" + "\n".join(shields) + "\n"
-            content = content.rstrip() + shields_text
-            actions.append("added shields at end")
+            # No title found, add at start
+            shields_text = "\n".join(shields) + "\n\n"
+            content = shields_text + content.lstrip()
+            actions.append("added shields at start")
     elif not should_generate:
         actions.append("skipped shields (disabled)")
 
