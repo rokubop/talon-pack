@@ -64,18 +64,19 @@ if sys.version_info < (3, 12):
         f"Run with: py -3.12 {os.path.basename(__file__)}"
     )
 
-ENTITIES = ["captures", "lists", "modes", "scopes", "settings", "tags", "actions"]
+ENTITIES = ["apps", "tags", "modes", "scopes", "settings", "captures", "lists", "actions"]
 MOD_ATTR_CALLS = ["setting", "tag", "mode", "list"]
 NAMESPACES = ["user", "edit", "core", "app", "code"]
 
 @dataclass
 class Entities:
-    captures: set = field(default_factory=set)
-    lists: set = field(default_factory=set)
+    apps: set = field(default_factory=set)
+    tags: set = field(default_factory=set)
     modes: set = field(default_factory=set)
     scopes: set = field(default_factory=set)
     settings: set = field(default_factory=set)
-    tags: set = field(default_factory=set)
+    captures: set = field(default_factory=set)
+    lists: set = field(default_factory=set)
     actions: set = field(default_factory=set)
 
 @dataclass
@@ -167,6 +168,15 @@ class EntityVisitor(ParentNodeVisitor):
                         for elt in value.elts:
                             if isinstance(elt, ast.Constant):
                                 self.all_entities.depends.tags.add(elt.value)
+
+            # Handle mod.apps.app_name = "matcher" pattern
+            if isinstance(node.targets[0], ast.Attribute):
+                # Check if it's mod.apps.something
+                if isinstance(node.targets[0].value, ast.Attribute):
+                    if node.targets[0].value.attr == "apps":
+                        app_name = node.targets[0].attr
+                        if app_name not in self.all_entities.contributes.apps:
+                            self.all_entities.contributes.apps.add(app_name)
 
             if isinstance(node.targets[0], ast.Attribute) and node.targets[0].attr == 'matches':
                 if isinstance(node.value, ast.Constant):
@@ -329,18 +339,137 @@ def check_requires_talon_beta_in_talon_files(folder_path: str) -> bool:
 
     return False
 
-def process_folder(folder_path: str) -> AllEntities:
+# ==============================================================================
+# TALON FILE PARSING
+# ==============================================================================
+
+def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
+    """
+    Parse a .talon file to extract dependencies (actions, captures, lists, settings, tags, modes, scopes).
+
+    Context header patterns (before '-' separator):
+    - tag: user.tag_name
+    - mode: command
+    - scope: user.scope_name
+    - settings(): user.setting = value
+
+    Command body patterns (after '-' separator):
+    - Actions: user.action_name() or actions.user.action_name()
+    - Captures: <user.capture_name>
+    - Lists: {user.list_name}
+    - Settings: settings.get("user.setting_name")
+
+    Note: Ignores configuration settings like 'code.language: python' as these are not dependencies.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Split context header from command body (separated by '-')
+        # We process both sections differently
+        parts = content.split('\n-\n', 1)
+        context_header = parts[0] if len(parts) > 0 else ""
+        command_body = parts[1] if len(parts) > 1 else ""
+
+        # ==============================================================================
+        # CONTEXT HEADER PARSING (before '-')
+        # ==============================================================================
+
+        # Extract tags: tag: user.tag_name
+        # Match lines like 'tag: user.my_tag' or 'and tag: user.my_tag' or 'not tag: user.my_tag'
+        tag_pattern = r'^\s*(?:and\s+|not\s+)?tag:\s+(user\.[a-z_][a-z0-9_]*)'
+        for match in re.finditer(tag_pattern, context_header, re.MULTILINE):
+            all_entities.depends.tags.add(match.group(1))
+
+        # Extract apps: app: app_name
+        # Match lines like 'app: vscode' or 'app: celeste'
+        app_pattern = r'^\s*(?:and\s+|not\s+)?app:\s+([a-z_][a-z0-9_]*)'
+        for match in re.finditer(app_pattern, context_header, re.MULTILINE):
+            all_entities.depends.apps.add(match.group(1))
+
+        # Extract modes: mode: command
+        # Match lines like 'mode: command' or 'and mode: dictation'
+        mode_pattern = r'^\s*(?:and\s+|not\s+)?mode:\s+([a-z_][a-z0-9_]*)'
+        for match in re.finditer(mode_pattern, context_header, re.MULTILINE):
+            all_entities.depends.modes.add(match.group(1))
+
+        # Extract scopes: scope: user.scope_name
+        # Match lines like 'scope: user.my_scope'
+        scope_pattern = r'^\s*(?:and\s+|not\s+)?scope:\s+(user\.[a-z_][a-z0-9_]*)'
+        for match in re.finditer(scope_pattern, context_header, re.MULTILINE):
+            all_entities.depends.scopes.add(match.group(1))
+
+        # Extract settings from settings() block: user.setting_name = value
+        # Match patterns like 'user.my_setting = 100'
+        settings_in_block_pattern = r'^\s+(user\.[a-z_][a-z0-9_]*)\s*='
+        for match in re.finditer(settings_in_block_pattern, context_header, re.MULTILINE):
+            all_entities.depends.settings.add(match.group(1))
+
+        # ==============================================================================
+        # COMMAND BODY PARSING (after '-')
+        # ==============================================================================
+
+        # Extract user actions: user.action_name()
+        # Matches: user.my_action(), user.my_action(arg1, arg2)
+        user_action_pattern = r'\buser\.([a-z_][a-z0-9_]*)\s*\('
+        for match in re.finditer(user_action_pattern, command_body):
+            action_name = f"user.{match.group(1)}"
+            all_entities.depends.actions.add(action_name)
+
+        # Extract actions with explicit namespace: actions.user.action_name()
+        # Matches: actions.user.my_action()
+        actions_user_pattern = r'\bactions\.user\.([a-z_][a-z0-9_]*)\s*\('
+        for match in re.finditer(actions_user_pattern, command_body):
+            action_name = f"user.{match.group(1)}"
+            all_entities.depends.actions.add(action_name)
+
+        # Extract captures: <user.capture_name>
+        # Matches: <user.my_capture>, <user.text>, etc.
+        capture_pattern = r'<(user\.[a-z_][a-z0-9_]*)>'
+        for match in re.finditer(capture_pattern, command_body):
+            all_entities.depends.captures.add(match.group(1))
+
+        # Extract lists: {user.list_name}
+        # Matches: {user.my_list}, {user.letters}, etc.
+        list_pattern = r'\{(user\.[a-z_][a-z0-9_]*)\}'
+        for match in re.finditer(list_pattern, command_body):
+            all_entities.depends.lists.add(match.group(1))
+
+        # Extract settings: settings.get("user.setting_name")
+        # Matches: settings.get("user.my_setting") or settings.get('user.my_setting')
+        settings_get_pattern = r'settings\.get\s*\(\s*["\']([^"\']+)["\']\s*\)'
+        for match in re.finditer(settings_get_pattern, command_body):
+            all_entities.depends.settings.add(match.group(1))
+
+    except Exception as e:
+        print(f"Error parsing {file_path}: {e}")
+
+# ==============================================================================
+# FOLDER PROCESSING
+# ==============================================================================
+
+def process_folder(folder_path: str) -> tuple[AllEntities, int, int]:
+    """
+    Walk through a folder and parse all .py and .talon files to extract entities.
+    Returns (all_entities, py_file_count, talon_file_count)
+    """
     all_entities = AllEntities()
+    py_count = 0
+    talon_count = 0
 
     for root, _, files in os.walk(folder_path):
         for file in files:
+            file_path = os.path.join(root, file)
             if file.endswith('.py'):
-                file_path = os.path.join(root, file)
                 parse_file(file_path, all_entities)
+                py_count += 1
+            elif file.endswith('.talon'):
+                parse_talon_file(file_path, all_entities)
+                talon_count += 1
 
-    return all_entities
+    return all_entities, py_count, talon_count
 
-def entity_extract(folder_path: str) -> AllEntities:
+def entity_extract(folder_path: str) -> tuple[AllEntities, int, int]:
     if not os.path.isdir(folder_path):
         raise ValueError(f"The provided path is not a directory: {folder_path}")
 
@@ -445,6 +574,10 @@ def infer_namespace_from_entities(contributes: Entities) -> str | None:
 
     # Collect all entities from all namespaces
     for entity_type in ENTITIES:
+        # Skip apps - they don't follow user.namespace pattern
+        if entity_type == 'apps':
+            continue
+
         entities = getattr(contributes, entity_type)
         for entity in entities:
             # Only process entities with a namespace prefix (user., edit., core., etc.)
@@ -519,6 +652,10 @@ def validate_namespace(namespace: str, contributes: Entities, strict: bool = Tru
     namespace_base = namespace[5:] if namespace.startswith('user.') else namespace
 
     for entity_type in ENTITIES:
+        # Skip apps - they don't follow user.namespace pattern
+        if entity_type == 'apps':
+            continue
+
         entities = getattr(contributes, entity_type)
         for entity in entities:
             # Only check user.* entities
@@ -656,7 +793,37 @@ def create_or_update_manifest() -> None:
 
             existing_manifest_data = load_existing_manifest(full_package_dir)
             is_new_manifest = not existing_manifest_data
-            new_entity_data = entity_extract(full_package_dir)
+            new_entity_data, py_count, talon_count = entity_extract(full_package_dir)
+
+            # Display scan statistics
+            print(f"  Scanned {py_count} .py file(s), {talon_count} .talon file(s)")
+
+            # Count contributes and depends
+            contributes_count = sum(len(getattr(new_entity_data.contributes, key)) for key in ENTITIES)
+            depends_count = sum(len(getattr(new_entity_data.depends, key)) for key in ENTITIES)
+
+            # Show contributes breakdown
+            if contributes_count > 0:
+                breakdown = []
+                for key in ENTITIES:
+                    count = len(getattr(new_entity_data.contributes, key))
+                    if count > 0:
+                        breakdown.append(f"{count} {key}")
+                print(f"  Contributes: {contributes_count} items ({', '.join(breakdown)})")
+            else:
+                print(f"  Contributes: 0 items")
+
+            # Show depends breakdown
+            if depends_count > 0:
+                breakdown = []
+                for key in ENTITIES:
+                    count = len(getattr(new_entity_data.depends, key))
+                    if count > 0:
+                        breakdown.append(f"{count} {key}")
+                print(f"  Depends: {depends_count} items ({', '.join(breakdown)})")
+            else:
+                print(f"  Depends: 0 items")
+            print()
 
             for key in ENTITIES:
                 contributes_set = sorted(list(getattr(new_entity_data.contributes, key)))
@@ -692,7 +859,7 @@ def create_or_update_manifest() -> None:
                         # No clear namespace pattern detected
                         print(f"WARNING: Could not infer namespace - no prefix appears in >50% of contributions")
                         print(f"  Contributions don't follow a consistent naming pattern")
-                        print(f"  Best practice: Use a common prefix for all contributions (e.g., 'user.my_pkg_action', 'user.my_pkg_setting')")
+                        print(f"  Best practice: Use a common prefix for all contributions (e.g., 'user.my_pkg' or 'user.my_pkg_*')")
                         print(f"  Or set 'namespace' manually in manifest.json")
                         print(f"  Or set '_generatorStrictNamespace' to false to skip this check")
                         print()

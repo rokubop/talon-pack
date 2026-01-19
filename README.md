@@ -25,7 +25,7 @@ git clone https://github.com/rokubop/talon-manifest-generator
 **Quick start:** Use `generate_all.py` to run all generators at once, or run individual scripts for specific tasks.
 
 ### generate_manifest.py
-Parses Python files using AST to detect Talon actions, settings, tags, lists, modes, scopes, and captures you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported actions/settings to specific packages and their versions. Creates or updates `manifest.json` with all discovered information, preserving your manual edits to fields like name, description, etc.
+Parses Python and Talon files to detect Talon entities (actions, settings, tags, lists, modes, scopes, captures, and apps) you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported entities to specific packages and their versions. Creates or updates `manifest.json` with all discovered information, preserving your manual edits to fields like name, description, etc.
 
 ```bash
 python generate_manifest.py ../talon-repo
