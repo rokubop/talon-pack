@@ -31,7 +31,7 @@ Manifest fields:
 - tags: Category tags for the package
 - platforms: Platform compatibility (manually added, optional). Array of platform names, e.g. ["windows", "mac", "linux"]
 - license: License type (auto-detected from LICENSE file on first run, manually editable, optional). Only included if LICENSE file exists or manually set
-- requires: Hardware/software requirements (auto-detected). Possible values: "talonBeta", "eyeTracker", "parrot", "gamepad", "streamDeck", "webcam". Set _generatorUpdateRequires to false to preserve manual edits
+- requires: Hardware/software requirements (auto-detected). Possible values: "talonBeta", "eyeTracker", "parrot", "gamepad", "streamDeck", "webcam". Add "requires" to "_generatorFrozenFields" to preserve manual edits
 - validateDependencies: Whether to validate dependencies at runtime (default: true)
   - true: Print errors on startup if dependencies not met
   - false: Skip dependency validation
@@ -43,9 +43,10 @@ Manifest fields:
 - _generatorVersion: Version of the generator tool (auto-added)
 - _generatorRequiresVersionAction: Whether generator should require version action (auto-added)
 - _generatorStrictNamespace: Whether generator should validate namespace consistency (default: true, auto-added)
-- _generatorUpdateRequires: Whether generator should auto-detect and update hardware/software requirements (default: true, auto-added)
-  - true: Auto-detect eyeTracker, parrot, gamepad, talonBeta, etc. based on code usage
-  - false: Preserve manual requires array exactly as-is
+- _generatorFrozenFields: Array of field names to prevent from being auto-updated (optional)
+  - Valid values: "requires", "license", "preview", "platforms", "contributes", "depends", "dependencies"
+  - Can also freeze sub-fields: "contributes.actions", "depends.tags", etc.
+  - Example: ["requires", "license"] to manually control these fields
 - _generatorShields: Whether to generate/update shield badges in README.md (default: true, optional)
 """
 
@@ -575,6 +576,25 @@ def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
 
     except Exception as e:
         print(f"Error parsing {file_path}: {e}")
+
+def apply_frozen_fields(new_manifest: dict, existing_manifest: dict, frozen_fields: set):
+    """
+    Apply frozen fields from existing manifest to new manifest.
+    Handles both top-level fields (e.g., "requires") and sub-fields (e.g., "contributes.actions").
+    """
+    for frozen in frozen_fields:
+        if '.' in frozen:
+            # Handle sub-field like "contributes.actions"
+            parent, child = frozen.split('.', 1)
+            if parent in existing_manifest and child in existing_manifest[parent]:
+                if parent not in new_manifest:
+                    new_manifest[parent] = {}
+                if isinstance(existing_manifest[parent], dict):
+                    new_manifest[parent][child] = existing_manifest[parent][child]
+        else:
+            # Handle top-level field like "requires"
+            if frozen in existing_manifest:
+                new_manifest[frozen] = existing_manifest[frozen]
 
 # ==============================================================================
 # FOLDER PROCESSING
@@ -1129,28 +1149,16 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
             print(f"  Scanned {py_count} .py file(s), {talon_count} .talon file(s)")
             print()
 
-            # Check if package requires Talon beta
-            auto_requires = existing_manifest_data.get("_generatorUpdateRequires", True)
+            # Auto-detect requirements (parrot, gamepad, streamDeck, webcam, eyeTracker, talonBeta)
+            requires_set = set(new_entity_data.requires)
 
-            if auto_requires:
-                requires_set = set(new_entity_data.requires)  # Start with detected requirements (parrot, gamepad, etc.)
+            # Check for eye tracker requirement based on tracking.* actions
+            if any(action.startswith('tracking.') for action in new_entity_data.all_actions_used):
+                requires_set.add("eyeTracker")
 
-                # Check for eye tracker requirement based on tracking.* actions
-                if any(action.startswith('tracking.') for action in new_entity_data.all_actions_used):
-                    requires_set.add("eyeTracker")
-
-                # Handle Talon beta requirement (preserve existing or auto-detect)
-                if "requires" in existing_manifest_data and "talonBeta" in existing_manifest_data["requires"]:
-                    requires_set.add("talonBeta")
-                else:
-                    # Auto-detect Talon beta requirement
-                    requires_talon_beta = new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir)
-                    if requires_talon_beta:
-                        requires_set.add("talonBeta")
-                        print(f"Package requires Talon beta\n")
-            else:
-                # Preserve existing requires array exactly as-is
-                requires_set = set(existing_manifest_data.get("requires", []))
+            # Auto-detect Talon beta requirement
+            if new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir):
+                requires_set.add("talonBeta")
 
             # Generate title from package name if this is a new manifest
             default_title = ""
@@ -1234,8 +1242,14 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
                 "_generatorVersion": get_generator_version(),
                 "_generatorRequiresVersionAction": default_require_version,
                 "_generatorStrictNamespace": existing_manifest_data.get("_generatorStrictNamespace", True),
-                "_generatorUpdateRequires": auto_requires
+                "_generatorFrozenFields": existing_manifest_data.get("_generatorFrozenFields", [])
             })
+
+            # Apply frozen fields if any are specified
+            frozen_fields = set(new_manifest_data["_generatorFrozenFields"])
+            if frozen_fields:
+                # Apply frozen fields: copy specified fields from existing to new manifest
+                apply_frozen_fields(new_manifest_data, existing_manifest_data, frozen_fields)
 
             new_manifest_data = prune_manifest_data(new_manifest_data)
             update_manifest(full_package_dir, new_manifest_data)
