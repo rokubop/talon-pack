@@ -98,14 +98,14 @@ python generate_all.py ../talon-repo-1 ../talon-repo-2
   },
   "devDependencies": {},
   "contributes": {
-      "settings": [
-        "user.my_package_setting_1",
-        "user.my_package_setting_2"
+    "settings": [
+      "user.my_package_setting_1",
+      "user.my_package_setting_2"
     ],
     "actions": [
-        "user.my_package_action_1",
-        "user.my_package_action_2",
-        "user.my_package_version"
+      "user.my_package_action_1",
+      "user.my_package_action_2",
+      "user.my_package_version"
     ],
   },
   "depends": {
