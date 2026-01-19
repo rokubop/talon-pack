@@ -775,7 +775,9 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
         sys.exit(1)
 
     root_path = os.getcwd()
-    CREATE_MANIFEST_DIRS = sys.argv[1:]
+
+    CREATE_MANIFEST_DIRS = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
+
     print(f"Processing {len(CREATE_MANIFEST_DIRS)} package(s)...\n")
 
     # Find talon user directory by going up from script location
