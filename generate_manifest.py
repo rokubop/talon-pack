@@ -43,6 +43,9 @@ Manifest fields:
 - _generatorVersion: Version of the generator tool (auto-added)
 - _generatorRequiresVersionAction: Whether generator should require version action (auto-added)
 - _generatorStrictNamespace: Whether generator should validate namespace consistency (default: true, auto-added)
+- _generatorUpdateRequires: Whether generator should auto-detect and update hardware/software requirements (default: true, auto-added)
+  - true: Auto-detect eyeTracker, parrot, gamepad, talonBeta, etc. based on code usage
+  - false: Preserve manual requires array exactly as-is
 - _generatorShields: Whether to generate/update shield badges in README.md (default: true, optional)
 """
 
@@ -100,7 +103,8 @@ class AllEntities:
     contributes: Entities = field(default_factory=Entities)
     depends: Entities = field(default_factory=Entities)
     requires_beta: bool = False
-    requires: set = field(default_factory=set)
+    requires: set = field(default_factory=set)  # Hardware and software requirements (parrot, gamepad, eyeTracker, etc.)
+    all_actions_used: set = field(default_factory=set)  # Track all actions including built-ins for requirement detection
 
 class ParentNodeVisitor(ast.NodeVisitor):
     """A helper visitor class to set the parent attribute for each node."""
@@ -252,11 +256,16 @@ class EntityVisitor(ParentNodeVisitor):
 
             # Handle actions.user.something calls
             if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Attribute):
-                if node.func.value.attr in NAMESPACES:
-                    # Capture the full name, including the prefix
+                # Check if it's an actions.* call
+                if isinstance(node.func.value.value, ast.Name) and node.func.value.value.id == 'actions':
+                    # Capture the full name for all actions (for requirement detection)
                     action_name = f"{node.func.value.attr}.{node.func.attr}"
-                    if action_name not in self.all_entities.depends.actions:
-                        self.all_entities.depends.actions.add(action_name)
+                    self.all_entities.all_actions_used.add(action_name)
+
+                    # Only add to depends if it's a user-defined namespace
+                    if node.func.value.attr in NAMESPACES:
+                        if action_name not in self.all_entities.depends.actions:
+                            self.all_entities.depends.actions.add(action_name)
 
             # Handle something.get('user.some_setting')
             if isinstance(node.func, ast.Attribute) and node.func.attr == 'get' and isinstance(node.func.value, ast.Name) and node.func.value.id == 'settings':
@@ -410,9 +419,9 @@ def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
         for match in re.finditer(app_pattern, context_header, re.MULTILINE):
             all_entities.depends.apps.add(match.group(1))
 
-        # Extract modes: mode: command
-        # Match lines like 'mode: command' or 'and mode: dictation'
-        mode_pattern = r'^\s*(?:and\s+|not\s+)?mode:\s+([a-z_][a-z0-9_]*)'
+        # Extract modes: mode: command or mode: user.custom_mode
+        # Match lines like 'mode: command' or 'and mode: dictation' or 'mode: user.my_mode'
+        mode_pattern = r'^\s*(?:and\s+|not\s+)?mode:\s+([a-z_][a-z0-9_.]*)'
         for match in re.finditer(mode_pattern, context_header, re.MULTILINE):
             all_entities.depends.modes.add(match.group(1))
 
@@ -1017,22 +1026,27 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
             print()
 
             # Check if package requires Talon beta
-            requires_set = set(new_entity_data.requires)  # Start with detected hardware requirements
+            auto_requires = existing_manifest_data.get("_generatorUpdateRequires", True)
 
-            # Check for eye tracker requirement based on tracking.* actions
-            all_actions = set(new_entity_data.depends.actions) | set(new_entity_data.contributes.actions)
-            if any(action.startswith('tracking.') for action in all_actions):
-                requires_set.add("eyeTracker")
+            if auto_requires:
+                requires_set = set(new_entity_data.requires)  # Start with detected requirements (parrot, gamepad, etc.)
 
-            # Handle Talon beta requirement (preserve existing or auto-detect)
-            if "requires" in existing_manifest_data and "talonBeta" in existing_manifest_data["requires"]:
-                requires_set.add("talonBeta")
-            else:
-                # Auto-detect Talon beta requirement
-                requires_talon_beta = new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir)
-                if requires_talon_beta:
+                # Check for eye tracker requirement based on tracking.* actions
+                if any(action.startswith('tracking.') for action in new_entity_data.all_actions_used):
+                    requires_set.add("eyeTracker")
+
+                # Handle Talon beta requirement (preserve existing or auto-detect)
+                if "requires" in existing_manifest_data and "talonBeta" in existing_manifest_data["requires"]:
                     requires_set.add("talonBeta")
-                    print(f"Package requires Talon beta\n")
+                else:
+                    # Auto-detect Talon beta requirement
+                    requires_talon_beta = new_entity_data.requires_beta or check_requires_talon_beta_in_talon_files(full_package_dir)
+                    if requires_talon_beta:
+                        requires_set.add("talonBeta")
+                        print(f"Package requires Talon beta\n")
+            else:
+                # Preserve existing requires array exactly as-is
+                requires_set = set(existing_manifest_data.get("requires", []))
 
             # Generate title from package name if this is a new manifest
             default_title = ""
@@ -1093,7 +1107,7 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
             # Filter built-in actions from depends before adding to manifest
             filtered_depends_dict = vars(new_entity_data.depends).copy()
             filtered_depends_dict['actions'] = sorted([
-                action for action in new_entity_data.depends.actions 
+                action for action in new_entity_data.depends.actions
                 if not is_builtin_action(action)
             ])
 
@@ -1115,7 +1129,8 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
                 "_generator": "talon-manifest-generator",
                 "_generatorVersion": get_generator_version(),
                 "_generatorRequiresVersionAction": default_require_version,
-                "_generatorStrictNamespace": existing_manifest_data.get("_generatorStrictNamespace", True)
+                "_generatorStrictNamespace": existing_manifest_data.get("_generatorStrictNamespace", True),
+                "_generatorUpdateRequires": auto_requires
             })
 
             new_manifest_data = prune_manifest_data(new_manifest_data)
