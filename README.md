@@ -278,7 +278,7 @@ app.register("ready", validate_dependencies)
 | _generatorVersion | Version of the generator |
 | _generatorRequiresVersionAction | Whether the generator should require a version action (default: true if namespace exists). Set to false to disable version action requirement check |
 | _generatorStrictNamespace | Whether the generator should validate namespace consistency (default: true). Set to false to allow multiple namespaces and skip validation warnings. Useful for collection packages like talon-community |
-| _generatorFrozenFields | Array of field names to prevent from being auto-updated (optional). Valid values: `"requires"`, `"license"`, `"preview"`, `"platforms"`, `"contributes"`, `"depends"`, `"dependencies"`, or sub-fields like `"contributes.actions"`, `"depends.tags"`. Example: `["requires", "license"]` to manually control these fields. |
+| _generatorFrozenFields | Array of field names to prevent from being auto-updated. e.g.: `"requires"`, `"license"`, `"contributes"`, or sub-fields like `"contributes.actions"`, `"depends.tags"`, etc |
 | _generatorShields | Whether to generate/update shield badges in README.md (default: true). Set to false to disable automatic shield generation. |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.

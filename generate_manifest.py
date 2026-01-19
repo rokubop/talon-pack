@@ -43,10 +43,8 @@ Manifest fields:
 - _generatorVersion: Version of the generator tool (auto-added)
 - _generatorRequiresVersionAction: Whether generator should require version action (auto-added)
 - _generatorStrictNamespace: Whether generator should validate namespace consistency (default: true, auto-added)
-- _generatorFrozenFields: Array of field names to prevent from being auto-updated (optional)
-  - Valid values: "requires", "license", "preview", "platforms", "contributes", "depends", "dependencies"
-  - Can also freeze sub-fields: "contributes.actions", "depends.tags", etc.
-  - Example: ["requires", "license"] to manually control these fields
+- _generatorFrozenFields: Array of field names to prevent from being auto-updated.
+   e.g.: `"requires"`, `"license"`, `"contributes"`, or sub-fields like `"contributes.actions"`, `"depends.tags"`, etc
 - _generatorShields: Whether to generate/update shield badges in README.md (default: true, optional)
 """
 
