@@ -15,31 +15,31 @@ def generate_installation_markdown(manifest: dict) -> str:
         "talonBeta": "[**Talon Beta**](https://talon.wiki/Help/beta_talon/)",
         "gamepad": "**Gamepad** - Physical gamepad or joystick controller",
         "streamDeck": "**Elgato Stream Deck** - Elgato Stream Deck device (button panel or pedal)",
-        "parrot": "**Parrot** - Trained parrot noise model for voice commands",
+        "parrot": "**Parrot** - Trained parrot model with `parrot_integration.py` and `patterns.json` files",
         "eyeTracker": "**Eye Tracker** - Eye tracking device (e.g., Tobii 4C or Tobii 5)",
         "webcam": "**Webcam** - Camera for face tracking commands"
     }
 
     lines = ["## Installation"]
 
-    # Combine Requirements and Dependencies sections if both exist
+    # Combine Requirements and Dependencies sections
     has_requirements = bool(requires)
     has_dependencies = bool(dependencies)
 
     if has_requirements or has_dependencies:
-        # Decide section title
-        if has_requirements and has_dependencies:
-            lines.append("\n### Requirements & Dependencies")
-        elif has_requirements:
-            lines.append("\n### Requirements")
-        else:
-            lines.append("\n### Dependencies")
-
+        # Always use "Dependencies" as the title
+        lines.append("\n### Dependencies")
         lines.append("")
+
+        # Sort requirements to list Talon Beta first
+        sorted_requires = []
+        if 'talonBeta' in requires:
+            sorted_requires.append('talonBeta')
+        sorted_requires.extend([req for req in requires if req != 'talonBeta'])
 
         # Add requirements
         if has_requirements:
-            for req in requires:
+            for req in sorted_requires:
                 description = requirement_descriptions.get(req, f"**{req}**")
                 lines.append(f"- {description}")
 

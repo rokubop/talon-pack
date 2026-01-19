@@ -73,19 +73,76 @@ MOD_ATTR_CALLS = ["setting", "tag", "mode", "list"]
 NAMESPACES = ["user", "edit", "core", "app", "code"]
 
 # Built-in Talon action namespaces that should not be added to dependencies
+# Sourced from: set(action.split('.')[0] for action in registry.actions) - {'user'}
 BUILTIN_ACTION_NAMESPACES = {
     "app", "auto_format", "auto_insert", "browser", "bytes", "clip", "code", "core",
-    "deck", "dict", "dictate", "edit", "find", "insert", "key", "list", "math", "menu",
-    "mimic", "mode", "mouse_click", "mouse_drag", "mouse_move", "mouse_nudge",
-    "mouse_release", "mouse_scroll", "mouse_x", "mouse_y", "next", "paste", "path",
+    "deck", "dict", "dictate", "edit", "insert", "key", "list", "math", "menu",
+    "migrate", "mimic", "mode", "mouse_click", "mouse_drag", "mouse_move", "mouse_nudge",
+    "mouse_release", "mouse_scroll", "mouse_x", "mouse_y", "paste", "path",
     "print", "random", "set", "settings", "skip", "sleep", "sound", "speech", "string",
     "time", "tracking", "tuple", "types", "win"
+}
+
+# Built-in Talon tags that should not be added to dependencies
+# Sourced from: [tag for tag in registry.tags if not tag.startswith('user.')]
+BUILTIN_TAGS = {
+    "terminal"
+}
+
+# Built-in Talon modes that should not be added to dependencies
+BUILTIN_MODES = {
+    "all", "command", "dictation", "sleep"
+}
+
+# Built-in Talon settings that should not be added to dependencies
+# Sourced from: [setting for setting in registry.settings if not setting.startswith('user.')]
+BUILTIN_SETTINGS = {
+    "dictate.punctuation", "dictate.word_map", "hotkey_wait", "imgui.dark_mode", "imgui.scale",
+    "insert_wait", "key_hold", "key_wait", "paste_wait", "speech._engine_id", "speech._subtitles",
+    "speech.debug", "speech.engine", "speech.gain", "speech.language", "speech.latency",
+    "speech.microphone", "speech.normalize", "speech.record_all", "speech.record_labels",
+    "speech.record_path", "speech.threshold", "speech.timeout", "tracking.zoom_height",
+    "tracking.zoom_live", "tracking.zoom_scale", "tracking.zoom_width"
+}
+
+# Built-in Talon captures that should not be added to dependencies
+# Sourced from: [cap for cap in registry.captures if not cap.startswith('user.')]
+BUILTIN_CAPTURES = {
+    "digit_string", "digits", "key", "letter", "modifiers", "number", "number_signed",
+    "number_small", "number_string", "special_key", "symbol"
+}
+
+# Built-in Talon lists that should not be added to dependencies
+# Sourced from: [lst for lst in registry.lists if not lst.startswith('user.')]
+BUILTIN_LISTS = {
+    "digit", "letter", "modifier", "number_meta", "number_scale", "number_sign",
+    "number_small", "special_key", "symbol"
 }
 
 def is_builtin_action(action_name: str) -> bool:
     """Check if an action is a built-in Talon action that shouldn't be tracked as a dependency."""
     namespace = action_name.split('.')[0]
     return namespace in BUILTIN_ACTION_NAMESPACES
+
+def is_builtin_tag(tag_name: str) -> bool:
+    """Check if a tag is a built-in Talon tag that shouldn't be tracked as a dependency."""
+    return tag_name in BUILTIN_TAGS
+
+def is_builtin_mode(mode_name: str) -> bool:
+    """Check if a mode is a built-in Talon mode that shouldn't be tracked as a dependency."""
+    return mode_name in BUILTIN_MODES
+
+def is_builtin_setting(setting_name: str) -> bool:
+    """Check if a setting is a built-in Talon setting that shouldn't be tracked as a dependency."""
+    return setting_name in BUILTIN_SETTINGS
+
+def is_builtin_capture(capture_name: str) -> bool:
+    """Check if a capture is a built-in Talon capture that shouldn't be tracked as a dependency."""
+    return capture_name in BUILTIN_CAPTURES
+
+def is_builtin_list(list_name: str) -> bool:
+    """Check if a list is a built-in Talon list that shouldn't be tracked as a dependency."""
+    return list_name in BUILTIN_LISTS
 
 @dataclass
 class Entities:
@@ -397,11 +454,19 @@ def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Split context header from command body (separated by '-')
-        # We process both sections differently
-        parts = content.split('\n-\n', 1)
-        context_header = parts[0] if len(parts) > 0 else ""
-        command_body = parts[1] if len(parts) > 1 else ""
+        # Split context header from command body
+        # Handle both formats: "context\n-\ncommands" and "-\ncommands" (no context header)
+        if content.startswith('-\n') or content.startswith('-\r\n'):
+            # No context header, everything is command body
+            context_header = ""
+            command_body = content.split('\n', 1)[1] if '\n' in content else ""
+        else:
+            # Has context header, split on separator
+            parts = content.split('\n-\n', 1)
+            if len(parts) == 1:
+                parts = content.split('\r\n-\r\n', 1)  # Handle Windows line endings
+            context_header = parts[0] if len(parts) > 0 else ""
+            command_body = parts[1] if len(parts) > 1 else ""
 
         # ==============================================================================
         # CONTEXT HEADER PARSING (before '-')
@@ -801,15 +866,22 @@ def prune_empty_arrays(data):
 
 def prune_manifest_data(manifest_data):
     """
-    Prune empty arrays from the 'contributes' and 'depends' sections of the manifest data,
-    but keep other empty fields for documentation purposes.
+    Prune empty arrays from the manifest data.
+    Removes empty arrays from 'contributes' and 'depends' sections,
+    and removes top-level empty arrays for 'requires' and 'platforms'.
+    Keeps 'tags' even if empty (user-defined metadata).
     """
-    # Prune contributes and depends sections only
+    # Prune contributes and depends sections
     if 'contributes' in manifest_data:
         manifest_data['contributes'] = prune_empty_arrays(manifest_data['contributes'])
 
     if 'depends' in manifest_data:
         manifest_data['depends'] = prune_empty_arrays(manifest_data['depends'])
+
+    # Prune top-level empty arrays (but keep tags as it's user-defined)
+    for field in ['requires', 'platforms']:
+        if field in manifest_data and isinstance(manifest_data[field], list) and len(manifest_data[field]) == 0:
+            del manifest_data[field]
 
     return manifest_data
 
@@ -864,10 +936,27 @@ def create_or_update_manifest(skip_version_errors: bool = False) -> None:
 
             for key in ENTITIES:
                 contributes_set = sorted(list(getattr(new_entity_data.contributes, key)))
-                depends_filtered = sorted([
-                    entity for entity in getattr(new_entity_data.depends, key)
-                    if entity not in contributes_set
-                ])
+                depends_list = getattr(new_entity_data.depends, key)
+
+                # Filter out entities that are contributed by this package
+                depends_filtered = [entity for entity in depends_list if entity not in contributes_set]
+
+                # Filter out built-in entities based on type
+                if key == 'actions':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_action(entity)]
+                elif key == 'tags':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_tag(entity)]
+                elif key == 'modes':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_mode(entity)]
+                elif key == 'settings':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_setting(entity)]
+                elif key == 'captures':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_capture(entity)]
+                elif key == 'lists':
+                    depends_filtered = [entity for entity in depends_filtered if not is_builtin_list(entity)]
+
+                depends_filtered = sorted(depends_filtered)
+
                 setattr(new_entity_data.contributes, key, contributes_set)
                 setattr(new_entity_data.depends, key, depends_filtered)
 
