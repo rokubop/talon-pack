@@ -147,7 +147,7 @@ This file provides:
 {chr(10).join(description_parts) if description_parts else "- Version metadata for the package"}
 """
 import json
-import os
+from pathlib import Path
 from talon import {talon_imports}
 
 '''
@@ -155,6 +155,14 @@ from talon import {talon_imports}
     # Only include version action if namespace is provided
     if action_name:
         version_file_content += f'''mod = Module()
+
+try:
+    # Version is cached at import. Restart or save this file to pick up changes.
+    with open(Path(__file__).parent / 'manifest.json', 'r', encoding='utf-8') as f:
+        _VERSION = tuple(map(int, json.load(f)['version'].split('.')))
+except (FileNotFoundError, KeyError, ValueError) as e:
+    print(f"ERROR: {package_name} failed to load version from manifest.json: {{e}}")
+    _VERSION = (0, 0, 0)
 
 @mod.action_class
 class Actions:
@@ -164,10 +172,7 @@ class Actions:
 
         Usage: actions.user.{action_name}_version() >= (1, 2, 0)
         """
-        manifest_path = os.path.join(os.path.dirname(__file__), 'manifest.json')
-        with open(manifest_path, 'r', encoding='utf-8') as f:
-            version_str = json.load(f)['version']
-        return tuple(map(int, version_str.split('.')))
+        return _VERSION
 '''
 
     if has_dependencies and dependency_check:
@@ -182,7 +187,7 @@ def validate_dependencies():
     'validateDependencies': false in manifest.json.
     """
     try:
-        with open(os.path.join(os.path.dirname(__file__), 'manifest.json'), 'r') as f:
+        with open(Path(__file__).parent / 'manifest.json', 'r') as f:
             data = json.load(f)
 
         if not data.get('validateDependencies', True):
@@ -207,20 +212,24 @@ def validate_dependencies():
                     if github_url:
                         errors.append(f"    Navigate to the {{dep}} directory and run: git pull")
                         errors.append(f"    {{github_url}}")
-            except AttributeError:
+                    errors.append("")
+            except Exception as e:
                 errors.append(f"  Cannot verify {{dep}} {{version_str}}+ (missing or invalid {{version_action}} action)")
                 if github_url:
                     errors.append(f"    Install/update from: {{github_url}}")
-            except Exception as e:
-                errors.append(f"  {{dep}}: {{e}}")
+                errors.append(f"    {{e}}")
+                errors.append("")
 
         if errors:
-            print(f"\\n{{data.get('name')}}: dependency not met")
+            print(f"{'='*60}")
+            print(f"{{data.get('name')}}: dependency requirements not met.\\n")
             for error in errors:
                 print(error)
             print("  WARNING: Review code from unfamiliar sources before installing")
-            print(f"  To disable these warnings, set 'validateDependencies': false in {{data.get('name')}}/manifest.json")
-            print()
+            print("  Note: You may need to restart Talon after updating")
+            print("  To disable these warnings:")
+            print(f"    Set 'validateDependencies': false in {{data.get('name')}}/manifest.json")
+            print(f"{'='*60}")
     except:
         pass
 
