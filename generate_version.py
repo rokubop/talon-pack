@@ -206,6 +206,7 @@ def validate_dependencies():
                     action_ref = getattr(action_ref, part)
                 installed = action_ref()
 
+                # Handle both tuple and string versions
                 if isinstance(installed, str):
                     installed = tuple(int(x) for x in installed.split('.'))
 
