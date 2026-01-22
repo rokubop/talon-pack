@@ -10,14 +10,14 @@ Provides scripts for generating package-like files for your Talon repo: `manifes
 
 ## Installation
 
-Clone this repo into your [Talon](https://talonvoice.com/) user directory:
+Clone this repo into your Talon directory (either the root or user subdirectory):
 
 ```sh
 # mac and linux
-cd ~/.talon/user
+cd ~/.talon  # or ~/.talon/user
 
 # windows
-cd ~/AppData/Roaming/talon/user
+cd ~/AppData/Roaming/talon  # or ~/AppData/Roaming/talon/user
 
 git clone https://github.com/rokubop/talon-manifest-generator
 ```
@@ -30,57 +30,57 @@ git clone https://github.com/rokubop/talon-manifest-generator
 Parses Python and Talon files to detect Talon entities (actions, settings, tags, lists, modes, scopes, captures, and apps) you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported entities to specific packages and their versions. Creates or updates `manifest.json` with all discovered information, preserving your manual edits to fields like name, description, etc.
 
 ```bash
-python generate_manifest.py ../talon-repo
+python generate_manifest.py ../path-to-talon-repo
 ```
 
 ### generate_version.py
 Generates a `_version.py` file that exposes your `manifest.json` package version as a Talon action e.g., `actions.user.my_package_version()`. Also includes automatic dependency validation on Talon startup, printing clear error messages if dependencies are missing or outdated with installation/update instructions for other packages that have a `{user.other_package}_version()` Talon action.
 
 ```bash
-python generate_version.py ../talon-repo
+python generate_version.py ../path-to-talon-repo
 ```
 
 ### generate_readme.py
 Creates or updates `README.md` files with shield badges, description, and installation instructions. For existing READMEs, only updates the shield badges (preserves your custom installation instructions). Automatically includes `preview.png` if it exists in the package directory.
 
 ```bash
-python generate_readme.py ../talon-repo
+python generate_readme.py ../path-to-talon-repo
 ```
 
 ### generate_shields.py
 Generates or updates shield badges in your `README.md` based on your `manifest.json`. Badges show package version, status, platform, license, and Talon Beta requirement (if applicable). If no README exists, prints badges to console for copy/paste.
 
 ```bash
-python generate_shields.py ../talon-repo
+python generate_shields.py ../path-to-talon-repo
 ```
 
 ### generate_install_block.py
 Outputs formatted installation instructions for your package based on your `manifest.json`, including dependency information. Useful for quickly generating README installation sections. Only supports single directory.
 
 ```bash
-python generate_install_block.py ../talon-repo
+python generate_install_block.py ../path-to-talon-repo
 ```
 
 ### generate_all.py
 Runs all generators in sequence: `generate_manifest.py`, `generate_version.py`, and `generate_readme.py`. Creates or updates `manifest.json`. Creates or updates `_version.py`. Creates `README.md` if it doesn't exist, or updates shields in existing READMEs (preserves your custom content).
 
 ```bash
-python generate_all.py ../talon-repo
+python generate_all.py ../path-to-talon-repo
 ```
 
 ### Additional notes
 You can pass the `--dry-run` flag to any script to see what changes would be made without actually writing any files:
 ```bash
-python generate_manifest.py --dry-run ../talon-repo
-python generate_version.py --dry-run ../talon-repo
-python generate_readme.py --dry-run ../talon-repo
-python generate_shields.py --dry-run ../talon-repo
-python generate_all.py --dry-run ../talon-repo
+python generate_manifest.py --dry-run ../path-to-talon-repo
+python generate_version.py --dry-run ../path-to-talon-repo
+python generate_readme.py --dry-run ../path-to-talon-repo
+python generate_shields.py --dry-run ../path-to-talon-repo
+python generate_all.py --dry-run ../path-to-talon-repo
 ```
 
 You can provide multiple folders to most scripts
 ```bash
-python generate_all.py ../talon-repo-1 ../talon-repo-2
+python generate_all.py ../path-to-talon-repo-1 ../path-to-talon-repo-2
 ```
 
 ## Example `manifest.json`
@@ -171,13 +171,25 @@ from talon import Module, actions, app
 
 mod = Module()
 
-try:
-    # Version is cached at import. Restart or save this file to pick up changes.
-    with open(Path(__file__).parent / 'manifest.json', 'r', encoding='utf-8') as f:
-        _VERSION = tuple(map(int, json.load(f)['version'].split('.')))
-except Exception as e:
-    print(f"ERROR: talon-parrot-tester failed to load version from manifest.json: {e}")
-    _VERSION = (0, 0, 0)
+_cached_version = None
+
+def _get_version() -> tuple[int, int, int]:
+    """
+    Loads version from manifest.json. Cached after first successful load.
+    To reload: restart Talon or save this file
+    """
+    global _cached_version
+    if _cached_version is not None:
+        return _cached_version
+
+    try:
+        with open(Path(__file__).parent / 'manifest.json', 'r', encoding='utf-8') as f:
+            version = tuple(map(int, json.load(f)['version'].split('.')))
+            _cached_version = version
+            return version
+    except Exception as e:
+        print(f"ERROR: talon-parrot-tester failed to load version from manifest.json: {e}")
+        return (0, 0, 0)
 
 @mod.action_class
 class Actions:
@@ -187,7 +199,7 @@ class Actions:
 
         Usage: actions.user.parrot_tester_version() >= (1, 2, 0)
         """
-        return _VERSION
+        return _get_version()
 ```
 
 ## Example `_version.py` (with dependencies)
@@ -202,7 +214,8 @@ def validate_dependencies():
     'validateDependencies': false in manifest.json.
     """
     try:
-        with open(Path(__file__).parent / 'manifest.json', 'r') as f:
+        manifest_path = Path(__file__).parent / 'manifest.json'
+        with open(manifest_path, 'r') as f:
             data = json.load(f)
 
         if not data.get('validateDependencies', True):
@@ -247,7 +260,7 @@ def validate_dependencies():
             print("  WARNING: Review code from unfamiliar sources before installing")
             print("  Note: You may need to restart Talon after updating")
             print("  To disable these warnings:")
-            print(f"    Set 'validateDependencies': false in {data.get('name')}/manifest.json")
+            print(f"    Set 'validateDependencies': false in {manifest_path}")
             print(f"============================================================")
     except:
         pass
@@ -299,7 +312,7 @@ app.register("ready", validate_dependencies)
 | version | Semantic version number (major.minor.patch) |
 | namespace | Naming prefix for all talon actions in this package (e.g. `user.ui_elements` means all actions in this package are `user.ui_elements_*`). Best practice: all your actions should use the same namespace. Set `_generatorStrictNamespace` to false to allow multiple namespaces and skip validation warnings. |
 | github | GitHub repository URL |
-| preview | Preview image URL (inferred if a preview.png or similar image format is included) |
+| preview | Optional URL to preview image. Auto-detected if a file matching `preview.*` exists in package directory (converts to raw GitHub URL). |
 | author | Package author name (string) or names (list of strings) |
 | status | Package status/category. Can be any value, but these get automatic shield colors: "reference" (personal config/examples, not meant to be used directly), "prototype" (proof of concept, testing ideas), "experimental" (early stage, expect rough edges), "preview" (functional but still improving), "stable" (production-ready, safe to depend on), "deprecated" (stop using, migrate to alternative), "archived" (no longer maintained) |
 | tags | Arbitrary category tags for the package |

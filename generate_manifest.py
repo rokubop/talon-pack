@@ -926,6 +926,40 @@ def load_existing_manifest(package_dir: str) -> dict:
             return json.load(f)
     return {}
 
+def find_talon_user_dir() -> str:
+    """
+    Find the Talon user directory by walking up from the script location
+    and verifying 1) directory name, 2) user/ subdirectory, 3) talon.log files.
+    """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    search_path = script_dir
+
+    while search_path:
+        user_path = os.path.join(search_path, 'user')
+        dir_name = os.path.basename(search_path)
+        if dir_name in ('talon', '.talon') and os.path.isdir(user_path):
+            has_talon_log = any(
+                os.path.exists(os.path.join(search_path, f'talon.log{suffix}'))
+                for suffix in ['', '.1', '.2', '.3', '.4', '.5']
+            )
+
+            if has_talon_log:
+                return user_path
+
+        parent = os.path.dirname(search_path)
+        if parent == search_path:  # Reached filesystem root
+            break
+        search_path = parent
+
+    # Abort if we couldn't find the Talon user directory
+    print("ERROR: Could not find Talon directory")
+    print("  Searched up from script location but found no directory with:")
+    print("    - Directory name 'talon' or '.talon'")
+    print("    - user/ subdirectory")
+    print("    - talon.log file")
+    print(f"  Script location: {script_dir}")
+    sys.exit(1)
+
 def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool = False) -> None:
     if len(sys.argv) < 2:
         print("Usage: python manifest_builder.py <directory> [<directory2> ...]")
@@ -943,13 +977,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
 
     print(f"Processing {len(CREATE_MANIFEST_DIRS)} package(s)...\n")
 
-    # Find talon user directory by going up from script location
-    talon_user_dir = root_path
-    while talon_user_dir and os.path.basename(talon_user_dir) != 'user':
-        parent = os.path.dirname(talon_user_dir)
-        if parent == talon_user_dir:  # Reached filesystem root
-            break
-        talon_user_dir = parent
+    talon_user_dir = find_talon_user_dir()
 
     if not os.path.exists(root_path):
         print(f"Error: Packages directory not found at {root_path}")
