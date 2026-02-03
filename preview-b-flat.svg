@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" width="200" height="80">
+  <!-- Flat design cube -->
+  <g transform="translate(10, 6)">
+    <!-- Back faces (darker) -->
+    <path d="M25 8 L48 20 L48 52 L25 40 Z" fill="#1e40af" />
+    <path d="M25 8 L2 20 L2 52 L25 40 Z" fill="#2563eb" />
+    <!-- Top face (lighter) -->
+    <path d="M25 8 L48 20 L25 32 L2 20 Z" fill="#3b82f6" />
+    <!-- Front faces -->
+    <path d="M2 20 L25 32 L25 64 L2 52 Z" fill="#60a5fa" />
+    <path d="M48 20 L25 32 L25 64 L48 52 Z" fill="#3b82f6" />
+  </g>
+
+  <!-- Text -->
+  <text x="72" y="38" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600"
+    fill="#9ca3af">manifest.json</text>
+  <text x="72" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#6b7280">generator</text>
+</svg>

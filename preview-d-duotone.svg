@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" width="200" height="80">
+  <!-- Duotone style -->
+  <g transform="translate(10, 6)">
+    <!-- Dark base -->
+    <path d="M25 8 L48 20 L48 52 L25 64 L2 52 L2 20 Z" fill="#374151" />
+    <!-- Blue accent faces -->
+    <path d="M25 8 L48 20 L25 32 L2 20 Z" fill="#3b82f6" />
+    <path d="M25 32 L25 64 L2 52 L2 20 Z" fill="#3b82f6" opacity="0.6" />
+  </g>
+
+  <!-- Text -->
+  <text x="72" y="38" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600"
+    fill="#9ca3af">manifest.json</text>
+  <text x="72" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#6b7280">generator</text>
+</svg>

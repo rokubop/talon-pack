@@ -4,7 +4,7 @@
 ![Status](https://img.shields.io/badge/status-preview-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-green)
 
-![Preview](preview.svg)
+![Preview](preview-thing.svg)
 
 Provides scripts for generating package-like files for your Talon repo: `manifest.json` with dependencies and contributions, `_version.py` with version actions and dependency validation, `README.md` with shield badges and installation instructions, and more.
 
@@ -372,4 +372,3 @@ The script requires **Python 3.12 or higher**. If you get a version error, you c
 ```bash
 ~/.talon/bin/python3 generate_manifest.py ../talon-package
 ```
-

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" width="200" height="80">
+  <!-- 3D cardboard box -->
+  <g transform="translate(10, 5)">
+    <!-- Top face -->
+    <path d="M30 10 L55 22 L30 34 L5 22 Z" fill="#3b82f6" stroke="#1e3a8f" stroke-width="1.5" />
+    <!-- Left face -->
+    <path d="M5 22 L30 34 L30 62 L5 50 Z" fill="#2563eb" stroke="#1e3a8f" stroke-width="1.5" />
+    <!-- Right face -->
+    <path d="M55 22 L30 34 L30 62 L55 50 Z" fill="#1d4ed8" stroke="#1e3a8f" stroke-width="1.5" />
+
+    <!-- Tape - horizontal band only -->
+    <path d="M5 26 L30 38 L55 26 L55 30 L30 42 L5 30 Z" fill="#93c5fd" opacity="0.5" />
+  </g>
+
+  <!-- Text -->
+  <text x="78" y="38" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600"
+    fill="#9ca3af">manifest.json</text>
+  <text x="78" y="54" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#6b7280">generator</text>
+</svg>
