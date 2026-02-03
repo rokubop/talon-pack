@@ -150,7 +150,11 @@ def process_directory(package_dir: str, dry_run: bool = False):
                 actions_str = " and ".join(actions)
                 print(f"\nWould update README: {actions_str}\n")
                 print("="*60)
-                print(updated_content)
+                lines = updated_content.splitlines()
+                preview_lines = 20
+                print("\n".join(lines[:preview_lines]))
+                if len(lines) > preview_lines:
+                    print(f"\n... ({len(lines) - preview_lines} more lines)")
                 print("="*60)
             else:
                 with open(readme_path, "w", encoding="utf-8") as f:
@@ -165,7 +169,11 @@ def process_directory(package_dir: str, dry_run: bool = False):
             if dry_run:
                 print(f"\nWould create new README.md\n")
                 print("="*60)
-                print(new_content)
+                lines = new_content.splitlines()
+                preview_lines = 20
+                print("\n".join(lines[:preview_lines]))
+                if len(lines) > preview_lines:
+                    print(f"\n... ({len(lines) - preview_lines} more lines)")
                 print("="*60)
             else:
                 with open(readme_path, "w", encoding="utf-8") as f:

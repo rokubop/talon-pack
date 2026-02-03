@@ -64,7 +64,8 @@ if sys.version_info < (3, 12):
     current_version = f"{sys.version_info.major}.{sys.version_info.minor}"
     sys.exit(
         f"Python 3.12 or higher is required (you have {current_version}).\n"
-        f"Run with: py -3.12 {os.path.basename(__file__)}"
+        f"Update your tpack alias to use Talon's bundled Python.\n"
+        f"See: https://github.com/rokubop/talon-pack#troubleshooting"
     )
 
 ENTITIES = ["apps", "tags", "modes", "scopes", "settings", "captures", "lists", "actions"]

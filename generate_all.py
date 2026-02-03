@@ -56,7 +56,11 @@ def process_directory(package_dir: Path, dry_run: bool = False,
         print(f"Error: Directory not found: {package_dir}")
         return False
 
-    print(f"\nGenerating files for: {package_dir}")
+    # Use appropriate message based on mode
+    if run_install_block and not (run_manifest or run_version or run_readme or run_shields):
+        print(f"\nPackage: {package_dir}")
+    else:
+        print(f"\nGenerating files for: {package_dir}")
     print("=" * 60)
 
     # Run generators in sequence
@@ -87,7 +91,8 @@ def process_directory(package_dir: Path, dry_run: bool = False,
             print(f"Failed at {generator}")
             return False
 
-    print(f"All generators completed for {package_dir}")
+    if not (run_install_block and not (run_manifest or run_version or run_readme or run_shields)):
+        print(f"\nAll generators completed for {package_dir}")
     return True
 
 
@@ -130,14 +135,16 @@ def main():
         if process_directory(package_dir, dry_run, run_manifest, run_version, run_readme, run_shields, run_install_block):
             success_count += 1
 
-    print("\n" + "=" * 60)
-    if success_count == total_count:
-        if total_count == 1:
-            print("SUCCESS: All generators completed successfully!")
+    # Skip noisy success messages for simple output modes
+    if not install_block_only:
+        print("\n" + "=" * 60)
+        if success_count == total_count:
+            if total_count == 1:
+                print("SUCCESS: All generators completed successfully!")
+            else:
+                print(f"SUCCESS: All {total_count} directories processed successfully!")
         else:
-            print(f"SUCCESS: All {total_count} directories processed successfully!")
-    else:
-        print(f"Processed {success_count}/{total_count} directories successfully")
+            print(f"Processed {success_count}/{total_count} directories successfully")
 
 
 if __name__ == "__main__":

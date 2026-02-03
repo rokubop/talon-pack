@@ -26,6 +26,8 @@ git clone https://github.com/rokubop/talon-pack
 
 ## Quick Start
 
+> **Requires Python 3.12+**. If you get a version error, see [Troubleshooting](#troubleshooting) to use Talon's bundled Python.
+
 Set up an alias to run from any directory:
 
 ```bash
@@ -33,19 +35,24 @@ Set up an alias to run from any directory:
 alias tpack="python ~/.talon/talon-pack/generate_all.py"
 
 # Bash (Windows) - add to ~/.bashrc
-alias tpack="python ~/AppData/Roaming/talon/talon-pack/generate_all.py"
+alias tpack="py ~/AppData/Roaming/talon/talon-pack/generate_all.py"
 
 # PowerShell (Windows) - run: notepad $PROFILE, then add:
-function tpack { python "$env:APPDATA\talon\talon-pack\generate_all.py" @args }
+function tpack { py "$env:APPDATA\talon\talon-pack\generate_all.py" @args }
+```
+
+After adding the alias, reload your shell:
+```bash
+# Bash/Zsh (Mac/Linux/Windows)
+source ~/.bashrc   # or ~/.zshrc
+
+# PowerShell (Windows) - restart terminal, or run:
+. $PROFILE
 ```
 
 Then cd to your Talon package folder:
 ```bash
-# mac, linux
-cd ~/.talon/user/my-talon-package
-
-# windows
-cd ~/AppData/Roaming/talon/user/my-talon-package
+cd [TALON_HOME]/user/my-talon-package
 tpack              # Generate/update manifest, version, and readme files
 tpack --dry-run    # Preview changes without writing files
 tpack --help       # Show all options
