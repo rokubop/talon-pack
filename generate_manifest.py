@@ -1248,7 +1248,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
             preview_value = existing_manifest_data.get("preview", "")
             if not preview_value:
                 # Check for common image formats
-                for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+                for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']:
                     preview_path = os.path.join(full_package_dir, f"preview{ext}")
                     if os.path.exists(preview_path):
                         github_url = existing_manifest_data.get("github", "")
