@@ -59,6 +59,7 @@ Individual scripts can be run directly for specific tasks:
 Parses Python and Talon files to detect Talon entities (actions, settings, tags, lists, modes, scopes, captures, and apps) you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported entities to specific packages and their versions. Creates or updates `manifest.json` with all discovered information, preserving your manual edits to fields like name, description, etc.
 
 ```bash
+tpack --manifest-only
 python generate_manifest.py ../path-to-talon-repo
 ```
 
@@ -66,6 +67,7 @@ python generate_manifest.py ../path-to-talon-repo
 Generates a `_version.py` file that exposes your `manifest.json` package version as a Talon action e.g., `actions.user.my_package_version()`. Also includes automatic dependency validation on Talon startup, printing clear error messages if dependencies are missing or outdated with installation/update instructions for other packages that have a `{user.other_package}_version()` Talon action.
 
 ```bash
+tpack --version-only
 python generate_version.py ../path-to-talon-repo
 ```
 
@@ -73,6 +75,7 @@ python generate_version.py ../path-to-talon-repo
 Creates or updates `README.md` files with shield badges, description, and installation instructions. For existing READMEs, only updates the shield badges (preserves your custom installation instructions). Automatically includes `preview.png` if it exists in the package directory.
 
 ```bash
+tpack --readme-only
 python generate_readme.py ../path-to-talon-repo
 ```
 
@@ -80,6 +83,7 @@ python generate_readme.py ../path-to-talon-repo
 Generates or updates shield badges in your `README.md` based on your `manifest.json`. Badges show package version, status, platform, license, and Talon Beta requirement (if applicable). If no README exists, prints badges to console for copy/paste.
 
 ```bash
+tpack --shields-only
 python generate_shields.py ../path-to-talon-repo
 ```
 
@@ -87,30 +91,12 @@ python generate_shields.py ../path-to-talon-repo
 Outputs formatted installation instructions for your package based on your `manifest.json`, including dependency information. Useful for quickly generating README installation sections. Only supports single directory.
 
 ```bash
+tpack --install-block-only
 python generate_install_block.py ../path-to-talon-repo
 ```
 
-### generate_all.py
-Runs all generators in sequence: `generate_manifest.py`, `generate_version.py`, and `generate_readme.py`. Creates or updates `manifest.json`. Creates or updates `_version.py`. Creates `README.md` if it doesn't exist, or updates shields in existing READMEs (preserves your custom content).
-
-```bash
-python generate_all.py ../path-to-talon-repo
-```
-
 ### Additional notes
-You can pass the `--dry-run` flag to any script to see what changes would be made without actually writing any files:
-```bash
-python generate_manifest.py --dry-run ../path-to-talon-repo
-python generate_version.py --dry-run ../path-to-talon-repo
-python generate_readme.py --dry-run ../path-to-talon-repo
-python generate_shields.py --dry-run ../path-to-talon-repo
-python generate_all.py --dry-run ../path-to-talon-repo
-```
-
-You can provide multiple folders to most scripts
-```bash
-python generate_all.py ../path-to-talon-repo-1 ../path-to-talon-repo-2
-```
+All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack ../repo-1 ../repo-2`
 
 ## Example `manifest.json`
 
@@ -366,19 +352,24 @@ Most fields are preserved across regenerations, but `contributes`, `depends`, an
 
 ### Python Version Error
 
-The script requires **Python 3.12 or higher**. If you get a version error, you can use Talon's bundled Python 3.13 instead:
-
-**Windows:**
-```bash
-"C:\Program Files\Talon\python.exe" generate_manifest.py ../talon-package
-```
+The script requires **Python 3.12 or higher**. If you get a version error, update your alias to use Talon's bundled Python 3.13:
 
 **Mac:**
 ```bash
-/Applications/Talon.app/Contents/Resources/python/bin/python3 generate_manifest.py ../talon-package
+alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/generate_all.py"
 ```
 
 **Linux:**
 ```bash
-~/.talon/bin/python3 generate_manifest.py ../talon-package
+alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/generate_all.py"
+```
+
+**Windows (PowerShell):**
+```powershell
+function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\generate_all.py" @args }
+```
+
+**Windows (Bash):**
+```bash
+alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/generate_all.py"
 ```

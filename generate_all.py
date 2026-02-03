@@ -8,6 +8,8 @@ Usage:
   tpack --manifest-only          Only run manifest generator
   tpack --version-only           Only run version generator
   tpack --readme-only            Only run readme generator
+  tpack --shields-only           Only run shields generator
+  tpack --install-block-only     Only run install block generator (outputs to console)
   tpack --no-manifest            Skip manifest generator
   tpack --no-version             Skip version generator
   tpack --no-readme              Skip readme generator
@@ -47,7 +49,8 @@ def run_generator(script_name: str, directory: str, extra_args: list = None) -> 
 
 def process_directory(package_dir: Path, dry_run: bool = False,
                       run_manifest: bool = True, run_version: bool = True,
-                      run_readme: bool = True) -> bool:
+                      run_readme: bool = True, run_shields: bool = False,
+                      run_install_block: bool = False) -> bool:
     """Process a single directory with selected generators."""
     if not package_dir.exists():
         print(f"Error: Directory not found: {package_dir}")
@@ -68,6 +71,10 @@ def process_directory(package_dir: Path, dry_run: bool = False,
         generators.append(("generate_version.py", ["--dry-run"] if dry_run else None))
     if run_readme:
         generators.append(("generate_readme.py", ["--dry-run"] if dry_run else None))
+    if run_shields:
+        generators.append(("generate_shields.py", ["--dry-run"] if dry_run else None))
+    if run_install_block:
+        generators.append(("generate_install_block.py", None))
 
     if not generators:
         print("No generators selected to run.")
@@ -97,12 +104,16 @@ def main():
     manifest_only = "--manifest-only" in sys.argv
     version_only = "--version-only" in sys.argv
     readme_only = "--readme-only" in sys.argv
+    shields_only = "--shields-only" in sys.argv
+    install_block_only = "--install-block-only" in sys.argv
 
     # Determine which generators to run
-    only_mode = manifest_only or version_only or readme_only
+    only_mode = manifest_only or version_only or readme_only or shields_only or install_block_only
     run_manifest = manifest_only if only_mode else not no_manifest
     run_version = version_only if only_mode else not no_version
     run_readme = readme_only if only_mode else not no_readme
+    run_shields = shields_only if only_mode else False
+    run_install_block = install_block_only if only_mode else False
 
     # Get directories from arguments or use current directory
     package_dirs = [Path(d).resolve() for d in sys.argv[1:] if not d.startswith('--')]
@@ -116,7 +127,7 @@ def main():
     total_count = len(package_dirs)
 
     for package_dir in package_dirs:
-        if process_directory(package_dir, dry_run, run_manifest, run_version, run_readme):
+        if process_directory(package_dir, dry_run, run_manifest, run_version, run_readme, run_shields, run_install_block):
             success_count += 1
 
     print("\n" + "=" * 60)
