@@ -103,7 +103,7 @@ python generate_install_block.py ../path-to-talon-repo
 ```
 
 ### Additional notes
-All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack ../repo-1 ../repo-2`
+All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack repo-1 repo-2`
 
 ## Example `manifest.json`
 
