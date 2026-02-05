@@ -64,8 +64,10 @@ def generate_shields(manifest: dict) -> list[str]:
     return shields
 
 
-def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> str:
+def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False, show_diff: bool = True) -> str:
     """Update README.md shields. Returns 'updated', 'no_changes', or 'no_shields'."""
+    from diff_utils import diff_text, format_diff_output
+
     if not readme_path.exists():
         return "no_shields"
 
@@ -91,12 +93,13 @@ def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> s
     if content == updated_content:
         return "no_changes"
 
-    if dry_run:
-        print(f"\nWould update shields in {readme_path}\n")
-        print("="*60)
-        print(updated_content)
-        print("="*60)
-    else:
+    # Show diff
+    if show_diff:
+        has_changes, diff_output = diff_text(content, updated_content, "README.md")
+        if has_changes:
+            print(format_diff_output(diff_output))
+
+    if not dry_run:
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
 
@@ -145,10 +148,8 @@ def process_directory(package_dir: str, dry_run: bool = False, quiet: bool = Fal
         from diff_utils import DIM, RESET
 
         if readme_path.exists():
-            result = update_readme(readme_path, manifest, dry_run)
-            if result == "updated" and not dry_run:
-                print(f"Updated shields in {readme_path}")
-            elif result == "no_changes":
+            result = update_readme(readme_path, manifest, dry_run, show_diff=not quiet)
+            if result == "no_changes":
                 if not quiet:
                     print(f"{DIM}shields: no changes{RESET}")
             elif result == "no_shields":

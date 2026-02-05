@@ -65,7 +65,7 @@ def version_command(bump_type: str, directory: Path, dry_run: bool = False) -> b
         new_version = bump_version(old_version, bump_type)
         manifest['version'] = new_version
 
-        new_content = json.dumps(manifest, indent=2) + '\n'
+        new_content = json.dumps(manifest, indent=2)
 
         # Show diff
         print(f"\n{CYAN}{directory.name}/{RESET}")
