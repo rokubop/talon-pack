@@ -32,13 +32,13 @@ Set up an alias to run from any directory:
 
 ```bash
 # Bash/Zsh (Mac/Linux) - add to ~/.bashrc or ~/.zshrc
-alias tpack="python ~/.talon/talon-pack/generate_all.py"
+alias tpack="python ~/.talon/talon-pack/tpack.py"
 
 # Bash (Windows) - add to ~/.bashrc
-alias tpack="py ~/AppData/Roaming/talon/talon-pack/generate_all.py"
+alias tpack="py ~/AppData/Roaming/talon/talon-pack/tpack.py"
 
 # PowerShell (Windows) - run: notepad $PROFILE, then add:
-function tpack { py "$env:APPDATA\talon\talon-pack\generate_all.py" @args }
+function tpack { py "$env:APPDATA\talon\talon-pack\tpack.py" @args }
 ```
 
 After adding the alias, reload your shell:
@@ -56,6 +56,24 @@ cd [TALON_HOME]/user/my-talon-package
 tpack              # Generate/update manifest, version, and readme files
 tpack --dry-run    # Preview changes without writing files
 tpack --help       # Show all options
+```
+
+## Package Info
+
+View a summary of your package:
+
+```bash
+tpack info
+```
+
+## Version Bumping
+
+Bump the version in `manifest.json` using semver:
+
+```bash
+tpack version patch   # 1.0.0 -> 1.0.1
+tpack version minor   # 1.0.0 -> 1.1.0
+tpack version major   # 1.0.0 -> 2.0.0
 ```
 
 ## Scripts
@@ -355,6 +373,23 @@ app.register("ready", validate_dependencies)
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.
 
+## Configuration
+
+Edit `tpack.config.json` in the talon-pack directory to change default behavior:
+
+```json
+{
+  "defaults": {
+    "manifest": true,
+    "version": true,
+    "readme": true,
+    "shields": false
+  }
+}
+```
+
+Set any value to `false` to skip that generator by default, or `true` to include it. CLI flags (`--no-manifest`, `--shields-only`, etc.) override these settings.
+
 ## Troubleshooting
 
 ### Python Version Error
@@ -363,20 +398,20 @@ The script requires **Python 3.12 or higher**. If you get a version error, updat
 
 **Mac:**
 ```bash
-alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/generate_all.py"
+alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/tpack.py"
 ```
 
 **Linux:**
 ```bash
-alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/generate_all.py"
+alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/tpack.py"
 ```
 
 **Windows (PowerShell):**
 ```powershell
-function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\generate_all.py" @args }
+function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\tpack.py" @args }
 ```
 
 **Windows (Bash):**
 ```bash
-alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/generate_all.py"
+alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/tpack.py"
 ```

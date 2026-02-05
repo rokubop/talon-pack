@@ -92,8 +92,12 @@ def generate_version_action(package_dir: str, force: bool = False, dry_run: bool
     dependency_check = manifest.get('validateDependencies', True)
 
     if not requires_version_action and (not has_dependencies or not dependency_check):
-        print(f"\nSkipping _version.py generation:")
-        print(f"  _generatorRequiresVersionAction is false and no dependency validation needed")
+        from diff_utils import DIM, RESET
+        if verbose:
+            print(f"\nSkipping _version.py generation:")
+            print(f"  _generatorRequiresVersionAction is false and no dependency validation needed")
+        else:
+            print(f"{DIM}_version.py: skipped{RESET}")
         return
 
     # Only require namespace if version action is required

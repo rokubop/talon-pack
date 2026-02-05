@@ -1,0 +1,8 @@
+{
+  "defaults": {
+    "manifest": true,
+    "version": true,
+    "readme": true,
+    "shields": true
+  }
+}

@@ -64,10 +64,10 @@ def generate_shields(manifest: dict) -> list[str]:
     return shields
 
 
-def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> bool:
-    """Update README.md shields. Returns True if updated."""
+def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> str:
+    """Update README.md shields. Returns 'updated', 'no_changes', or 'no_shields'."""
     if not readme_path.exists():
-        return False
+        return "no_shields"
 
     with open(readme_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -77,7 +77,7 @@ def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> b
 
     # Check if shields exist
     if not re.search(shield_pattern, content):
-        return False
+        return "no_shields"
 
     # Generate new shields
     new_shields = generate_shields(manifest)
@@ -86,6 +86,10 @@ def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> b
     # Find all consecutive shields and replace as a block
     shield_block_pattern = r"(?:" + shield_pattern + r"\s*)+"
     updated_content = re.sub(shield_block_pattern, new_shields_block + "\n\n", content, count=1)
+
+    # Check if content actually changed
+    if content == updated_content:
+        return "no_changes"
 
     if dry_run:
         print(f"\nWould update shields in {readme_path}\n")
@@ -96,7 +100,7 @@ def update_readme(readme_path: Path, manifest: dict, dry_run: bool = False) -> b
         with open(readme_path, "w", encoding="utf-8") as f:
             f.write(updated_content)
 
-    return True
+    return "updated"
 
 
 def print_display_block(shields: list[str]):
@@ -109,14 +113,15 @@ def print_display_block(shields: list[str]):
     print("=" * 60 + "\n")
 
 
-def process_directory(package_dir: str, dry_run: bool = False):
+def process_directory(package_dir: str, dry_run: bool = False, quiet: bool = False):
     """Process a single directory."""
     package_dir = Path(package_dir).resolve()
 
     # Find manifest.json
     manifest_path = package_dir / "manifest.json"
     if not manifest_path.exists():
-        print(f"Error: manifest.json not found in {package_dir}")
+        if not quiet:
+            print(f"Error: manifest.json not found in {package_dir}")
         return False
 
     # Load manifest
@@ -130,24 +135,32 @@ def process_directory(package_dir: str, dry_run: bool = False):
         # Check if we should generate shields
         should_generate, reason = should_generate_shields(manifest)
         if not should_generate:
-            print(f"Skipping shields generation: {reason}")
+            if not quiet:
+                print(f"Skipping shields generation: {reason}")
             return True
 
         # Generate shields
         shields = generate_shields(manifest)
 
+        from diff_utils import DIM, RESET
+
         if readme_path.exists():
-            updated = update_readme(readme_path, manifest, dry_run)
-            if updated and not dry_run:
+            result = update_readme(readme_path, manifest, dry_run)
+            if result == "updated" and not dry_run:
                 print(f"Updated shields in {readme_path}")
-            elif not updated:
+            elif result == "no_changes":
+                if not quiet:
+                    print(f"{DIM}shields: no changes{RESET}")
+            elif result == "no_shields":
                 # README exists but no shields found - print display block
-                print(f"\nShields for {package_dir}:")
-                print_display_block(shields)
+                if not quiet:
+                    print(f"\nShields for {package_dir}:")
+                    print_display_block(shields)
         else:
             # No README - print display block
-            print(f"\nShields for {package_dir}:")
-            print_display_block(shields)
+            if not quiet:
+                print(f"\nShields for {package_dir}:")
+                print_display_block(shields)
         return True
     except Exception as e:
         print(f"Error processing {package_dir}: {e}")
@@ -157,23 +170,24 @@ def process_directory(package_dir: str, dry_run: bool = False):
 def main():
     # Parse flags
     dry_run = "--dry-run" in sys.argv
+    quiet = "--quiet" in sys.argv
 
     # Get directories from arguments or use current directory
-    package_dirs = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
+    package_dirs = [arg for arg in sys.argv[1:] if not arg.startswith('-')]
     if not package_dirs:
         package_dirs = ["."]
 
-    if dry_run:
+    if dry_run and not quiet:
         print("DRY RUN MODE - No files will be modified\n")
 
     success_count = 0
     total_count = len(package_dirs)
 
     for package_dir in package_dirs:
-        if process_directory(package_dir, dry_run):
+        if process_directory(package_dir, dry_run, quiet):
             success_count += 1
 
-    if total_count > 1:
+    if total_count > 1 and not quiet:
         print(f"\nProcessed {success_count}/{total_count} directories successfully")
 
 

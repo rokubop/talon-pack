@@ -873,7 +873,7 @@ def check_version_action(namespace: str, contributes: Entities, version_check: b
         version_check: True to error if missing, False to skip check
         package_name: Name of the package
         package_dir: Absolute path to package directory
-        skip_version_errors: If True, suppress error messages (used by generate_all.py)
+        skip_version_errors: If True, suppress error messages (used by tpack.py)
 
     Returns:
         Number of errors found (0 or 1)
@@ -898,7 +898,7 @@ def check_version_action(namespace: str, contributes: Entities, version_check: b
                 print(f"   Or set \"_generatorRequiresVersionAction\": false in manifest.json to skip this check")
                 print()
                 return 1
-            # When skipping errors (generate_all.py), don't count as error since it will be fixed next
+            # When skipping errors (tpack.py), don't count as error since it will be fixed next
             return 0
         else:
             print(f"\n{YELLOW}WARNING: _version.py exists but action '{expected_action}' not detected{RESET}")
