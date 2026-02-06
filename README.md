@@ -110,6 +110,20 @@ tpack my_repo
 
 Having issues? See [Troubleshooting](#troubleshooting).
 
+## Configuration
+Edit `tpack.config.json` in the talon-pack directory to change default behavior:
+
+```json
+{
+  "defaults": {
+    "manifest": true,
+    "version": true,
+    "readme": true,
+    "shields": false
+  }
+}
+```
+
 ## Version Bumping
 
 Bump the version in `manifest.json` using semver:
@@ -416,23 +430,6 @@ app.register("ready", validate_dependencies)
 | _generatorShields | Whether to generate/update shield badges in README.md (default: true). Set to false to disable automatic shield generation. |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.
-
-## Configuration
-
-Edit `tpack.config.json` in the talon-pack directory to change default behavior:
-
-```json
-{
-  "defaults": {
-    "manifest": true,
-    "version": true,
-    "readme": true,
-    "shields": false
-  }
-}
-```
-
-Set any value to `false` to skip that generator by default, or `true` to include it. CLI flags (`--no-manifest`, `--shields-only`, etc.) override these settings.
 
 ## Troubleshooting
 

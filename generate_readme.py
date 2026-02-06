@@ -54,8 +54,62 @@ def create_new_readme(manifest: dict, package_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> tuple[str, list[str]]:
-    """Update shields in existing README, preserving all other content. Returns (content, actions_taken)."""
+def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[str], list[str]]:
+    """
+    Update dependency version numbers in README if they exist in exact format.
+
+    Returns (updated_content, actions, warnings)
+    """
+    actions = []
+    warnings = []
+
+    dependencies = manifest.get("dependencies", {})
+    dev_dependencies = manifest.get("devDependencies", {})
+    all_deps = {**dependencies, **dev_dependencies}
+
+    for dep_name, dep_info in all_deps.items():
+        version = dep_info.get("min_version") or dep_info.get("version", "")
+        github = dep_info.get("github", "")
+
+        if not version:
+            continue
+
+        # Exact format we generate: - [**{name}**]({github}) (v{version}+)
+        # Pattern to match with any version number
+        if github:
+            exact_pattern = re.compile(
+                r"- \[\*\*" + re.escape(dep_name) + r"\*\*\]\(" + re.escape(github) + r"\) \(v([^)]+)\+\)"
+            )
+            expected_line = f"- [**{dep_name}**]({github}) (v{version}+)"
+        else:
+            # Unlinked format: - **{name}** (v{version}+)
+            exact_pattern = re.compile(
+                r"- \*\*" + re.escape(dep_name) + r"\*\* \(v([^)]+)\+\)"
+            )
+            expected_line = f"- **{dep_name}** (v{version}+)"
+
+        match = exact_pattern.search(content)
+
+        if match:
+            old_version = match.group(1)
+            if old_version != version:
+                # Version differs - update the line
+                content = exact_pattern.sub(expected_line, content)
+                actions.append(f"updated {dep_name} version: v{old_version} → v{version}")
+            # else: version same, no change needed
+        else:
+            # Exact format not found - check if mentioned at all
+            github_mentioned = github and github in content
+            name_mentioned = dep_name in content
+
+            if not github_mentioned and not name_mentioned:
+                warnings.append(f"{dep_name} not mentioned in README")
+
+    return content, actions, warnings
+
+
+def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> tuple[str, list[str], list[str]]:
+    """Update shields in existing README, preserving all other content. Returns (content, actions, warnings)."""
     from generate_shields import generate_shields, should_generate_shields
     from generate_install_block import generate_installation_markdown
 
@@ -100,6 +154,10 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
     elif not should_generate:
         actions.append("skipped shields (disabled)")
 
+    # Update dependency versions
+    content, dep_actions, dep_warnings = update_dependency_versions(content, manifest)
+    actions.extend(dep_actions)
+
     # Check if Installation/Install/Setup section exists
     install_section_pattern = r"^#{1,6}\s+.*\b(Installation|Install|Setup)\b"
 
@@ -118,7 +176,7 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
                 # No common sections, add at the end
                 content = content.rstrip() + "\n\n" + installation + "\n"
 
-    return content, actions
+    return content, actions, dep_warnings
 
 
 def process_directory(package_dir: str, dry_run: bool = False, verbose: bool = False, alt_manifest_path: str = None):
@@ -150,11 +208,11 @@ def process_directory(package_dir: str, dry_run: bool = False, verbose: bool = F
             with open(readme_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            updated_content, actions = update_existing_readme(content, manifest, package_dir)
+            updated_content, actions, warnings = update_existing_readme(content, manifest, package_dir)
 
             if dry_run:
                 # Show diff without writing
-                from diff_utils import diff_text, format_diff_output, status_no_change, DIM, RESET
+                from diff_utils import diff_text, format_diff_output, status_no_change, DIM, RESET, YELLOW
 
                 has_changes, diff_output = diff_text(content, updated_content, "README.md")
 
@@ -163,9 +221,12 @@ def process_directory(package_dir: str, dry_run: bool = False, verbose: bool = F
                     print(format_diff_output(diff_output))
                 else:
                     print(status_no_change("README.md"))
+
+                for warning in warnings:
+                    print(f"{YELLOW}Warning: {warning}{RESET}")
             else:
                 # Compare and show diff or "no changes"
-                from diff_utils import diff_text, format_diff_output, status_no_change, status_created
+                from diff_utils import diff_text, format_diff_output, status_no_change, status_created, YELLOW, RESET
 
                 has_changes, diff_output = diff_text(content, updated_content, "README.md")
 
@@ -176,6 +237,9 @@ def process_directory(package_dir: str, dry_run: bool = False, verbose: bool = F
                     print(format_diff_output(diff_output))
                 else:
                     print(status_no_change("README.md"))
+
+                for warning in warnings:
+                    print(f"{YELLOW}Warning: {warning}{RESET}")
         else:
             # Create new README
             new_content = create_new_readme(manifest, package_dir)
