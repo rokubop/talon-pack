@@ -32,6 +32,18 @@ import os
 import json
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows (avoid charmap encoding errors with emojis etc.)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try:
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = SCRIPT_DIR / "tpack.config.json"
@@ -286,11 +298,15 @@ def run_generator(script_name: str, directory: str, extra_args: list = None) -> 
         cmd = [sys.executable, str(script_path), directory]
         if extra_args:
             cmd.extend(extra_args)
+        env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
-            check=True
+            encoding='utf-8',
+            errors='replace',
+            check=True,
+            env=env
         )
         print(result.stdout, end='')
         return True
