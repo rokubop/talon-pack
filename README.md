@@ -13,10 +13,10 @@ Catalogs your Talon repo's contributions and dependencies, generates version val
 ## Usage
 
 ```bash
-$ tpack [path]              # update manifest, _version, and readme
-$ tpack info [path]         # list contributions, dependencies, and info
-$ tpack version patch       # bump version (1.0.0 -> 1.0.1)
-$ tpack help                # show all commands and options
+$ tpack [path]              # Create or update manifest, _version, and readme
+$ tpack --dry-run [path]    # Preview changes without writing files
+$ tpack info [path]         # List all Talon contributions and dependencies
+$ tpack help                # Show all commands and options
 ```
 
 ## Getting Started
