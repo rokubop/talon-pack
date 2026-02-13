@@ -26,6 +26,15 @@ Config:
 """
 
 import sys
+
+if sys.version_info < (3, 12):
+    current_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    sys.exit(
+        f"Python 3.12 or higher is required (you have {current_version}).\n"
+        f"Update your tpack alias to use Talon's bundled Python.\n"
+        f"See: https://github.com/rokubop/talon-pack#troubleshooting"
+    )
+
 import subprocess
 import tempfile
 import os
@@ -47,6 +56,10 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CONFIG_PATH = SCRIPT_DIR / "tpack.config.json"
+
+# Ensure sibling modules (e.g. diff_utils) are importable when using Talon's bundled Python
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 def bump_version(version: str, bump_type: str) -> str:
     """Bump a semver version string."""
@@ -170,6 +183,10 @@ def info_command(directory: Path) -> bool:
 
             if not os.path.exists(temp_manifest_path) or os.path.getsize(temp_manifest_path) == 0:
                 print(f"{RED}Error: Could not analyze directory {directory}{RESET}")
+                if result.stderr:
+                    print(result.stderr.strip())
+                if result.stdout:
+                    print(result.stdout.strip())
                 return False
 
             with open(temp_manifest_path, 'r', encoding='utf-8') as f:

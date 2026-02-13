@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 
 """
 Generates a `_version.py` file that exposes your `manifest.json` package version
@@ -16,6 +17,11 @@ Examples:
   python generate_version.py ../talon-package
   python generate_version.py ../package1 ../package2
 """
+
+# Ensure sibling modules are importable when using Talon's bundled Python
+_script_dir = str(Path(__file__).parent.resolve())
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
 
 def get_generator_version() -> str:
     """Get the version of manifest_builder from its own manifest.json"""

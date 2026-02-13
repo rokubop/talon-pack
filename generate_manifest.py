@@ -48,6 +48,11 @@ Manifest fields:
 - _generatorShields: Whether to generate/update shield badges in README.md (default: true, optional)
 """
 
+# Ensure sibling modules are importable when using Talon's bundled Python
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+
 def get_generator_version() -> str:
     """Get the version of manifest_builder from its own manifest.json"""
     script_dir = os.path.dirname(os.path.abspath(__file__))

@@ -56,8 +56,6 @@ Contributes:
 
 ## Getting Started
 
-> **Requires Python 3.12+**. If you get a version error, see [Troubleshooting](#troubleshooting) to use Talon's bundled Python.
-
 **1. Clone into your Talon directory:**
 
 ```sh
@@ -70,28 +68,47 @@ cd ~/AppData/Roaming/talon
 git clone https://github.com/rokubop/talon-pack
 ```
 
-**2. Set up an alias:**
+**2. Set up an alias (pick one):**
+
+Open your shell config file and add the alias below. Not sure which file? Run `echo $SHELL` - if it says `zsh`, use `~/.zshrc`; if `bash`, use `~/.bashrc`. To open it:
 
 ```bash
-# Bash/Zsh (Mac/Linux) - add to ~/.bashrc or ~/.zshrc
-alias tpack="python ~/.talon/talon-pack/tpack.py"
+code ~/.zshrc  # or ~/.bashrc — use vim, notepad, open, or any editor
+```
+Uses Talon's bundled Python 3.13, so no extra Python install needed.
 
-# Bash (Windows) - add to ~/.bashrc
-alias tpack="py ~/AppData/Roaming/talon/talon-pack/tpack.py"
+**Mac (Zsh)** - add to `~/.zshrc`:
+```bash
+alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/tpack.py"
+```
 
-# PowerShell (Windows) - run: notepad $PROFILE, then add:
-function tpack { py "$env:APPDATA\talon\talon-pack\tpack.py" @args }
+**Linux (Bash)** - add to `~/.bashrc`:
+```bash
+alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/tpack.py"
+```
+
+**Windows (Git Bash)** - add to `~/.bashrc`:
+```bash
+alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/tpack.py"
+```
+
+**Windows (WSL)** - add to `~/.bashrc`, replace `<YourUsername>` with your Windows username:
+```bash
+alias tpack="'/mnt/c/Program Files/Talon/python.exe' 'C:/Users/<YourUsername>/AppData/Roaming/talon/talon-pack/tpack.py'"
+```
+
+**Windows (PowerShell)** - run `notepad $PROFILE` and add:
+```powershell
+function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\tpack.py" @args }
 ```
 
 **3. Reload your shell:**
 
 ```bash
-# Bash/Zsh (Mac/Linux/Windows)
-source ~/.bashrc   # or ~/.zshrc
-
-# PowerShell (Windows) - restart terminal, or run:
-. $PROFILE
+source ~/.zshrc   # or ~/.bashrc
 ```
+
+For PowerShell, restart your terminal or run `. $PROFILE`.
 
 **4. Try it out:**
 
@@ -433,26 +450,17 @@ Most fields are preserved across regenerations, but `contributes`, `depends`, an
 
 ## Troubleshooting
 
-### Python Version Error
+### Using Your Own Python
 
-The script requires **Python 3.12 or higher**. If you get a version error, update your alias to use Talon's bundled Python 3.13:
+The default aliases use Talon's bundled Python. If you prefer your own Python, it must be **3.12 or higher**:
 
-**Mac:**
 ```bash
-alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/tpack.py"
-```
+# Mac/Linux
+alias tpack="python3 ~/.talon/talon-pack/tpack.py"
 
-**Linux:**
-```bash
-alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/tpack.py"
-```
+# Windows (PowerShell)
+function tpack { py "$env:APPDATA\talon\talon-pack\tpack.py" @args }
 
-**Windows (PowerShell):**
-```powershell
-function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\tpack.py" @args }
-```
-
-**Windows (Bash):**
-```bash
-alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/tpack.py"
+# Windows (Git Bash)
+alias tpack="py ~/AppData/Roaming/talon/talon-pack/tpack.py"
 ```

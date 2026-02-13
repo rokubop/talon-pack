@@ -18,6 +18,11 @@ import re
 import sys
 from pathlib import Path
 
+# Ensure sibling modules are importable when using Talon's bundled Python
+_script_dir = str(Path(__file__).parent.resolve())
+if _script_dir not in sys.path:
+    sys.path.insert(0, _script_dir)
+
 STATUS_COLORS = {
     "stable": "green",
     "preview": "orange",
