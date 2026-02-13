@@ -13,45 +13,10 @@ Catalogs your Talon repo's contributions and dependencies, generates version val
 ## Usage
 
 ```bash
-$ tpack                     # update manifest, _version, and readme
-$ tpack info                # list contributions, dependencies, and info
+$ tpack [path]              # update manifest, _version, and readme
+$ tpack info [path]         # list contributions, dependencies, and info
 $ tpack version patch       # bump version (1.0.0 -> 1.0.1)
-```
-
-`tpack info` works on any folder with no setup - use it to quickly see what a repo contributes.
-
-```bash
-$ tpack any_folder/
-
-any_folder/
-manifest.json: created
-+  "name": "any_folder",
-+  "version": "0.1.0",
-+  "contributes": { ... },
-+  "depends": { ... },
-+  ...
-_version.py: no changes
-README.md: updated
--  ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-+  ![Version](https://img.shields.io/badge/version-0.1.0-blue)
-
-Done.
-```
-
-```bash
-$ tpack info any_folder
-
-any_folder v1.2.0 (stable)
-A toolkit for building Talon interfaces
-https://github.com/user/any_folder
-namespace: user.any_folder
-
-Contributes:
-  actions:
-    user.any_folder_show
-    user.any_folder_hide
-  settings:
-    user.any_folder_enabled
+$ tpack help                # show all commands and options
 ```
 
 ## Getting Started
@@ -73,7 +38,7 @@ git clone https://github.com/rokubop/talon-pack
 Open your shell config file and add the alias below. Not sure which file? Run `echo $SHELL` - if it says `zsh`, use `~/.zshrc`; if `bash`, use `~/.bashrc`. To open it:
 
 ```bash
-code ~/.zshrc  # or ~/.bashrc — use vim, notepad, open, or any editor
+code ~/.zshrc  # or ~/.bashrc - use vim, notepad, open, or any editor
 ```
 Uses Talon's bundled Python 3.13, so no extra Python install needed.
 
