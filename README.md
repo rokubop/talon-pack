@@ -16,8 +16,6 @@ Catalogs your Talon repo's contributions and dependencies, generates version val
 $ tpack [path]              # Create or update manifest, _version, and readme
 $ tpack --dry-run [path]    # Preview changes without writing files
 $ tpack info [path]         # Analyze any Talon folder for contributions and dependencies
-$ tpack outdated [path]     # Show dependencies with newer local versions
-$ tpack update [dep] [path] # Update dependency min_version to installed version
 $ tpack help                # Show all commands and options
 ```
 
