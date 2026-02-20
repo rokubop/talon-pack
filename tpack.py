@@ -5,9 +5,13 @@ Will update instead of overwriting existing code where relevant.
 Usage:
   tpack [directory]              Update manifest, _version, and readme
   tpack info [dir]               List contributions, dependencies, and info
-  tpack version patch [dir]      Bump patch version (1.0.0 -> 1.0.1)
-  tpack version minor [dir]      Bump minor version (1.0.0 -> 1.1.0)
-  tpack version major [dir]      Bump major version (1.0.0 -> 2.0.0)
+  tpack patch [dir]               Bump patch version (1.0.0 -> 1.0.1)
+  tpack minor [dir]               Bump minor version (1.0.0 -> 1.1.0)
+  tpack major [dir]               Bump major version (1.0.0 -> 2.0.0)
+  tpack version patch [dir]       Same as above (long form)
+  tpack outdated [dir]             Show dependencies with newer local versions
+  tpack update [dep] [dir]         Update dependency min_version to installed version
+  tpack update [dir]               Update all dependencies to installed versions
   tpack --dry-run                Preview changes without writing files
   tpack -v, --verbose            Show detailed output (default: show only changes)
   tpack --manifest-only          Only run manifest generator
@@ -283,6 +287,196 @@ def info_command(directory: Path) -> bool:
             os.unlink(temp_manifest_path)
 
 
+def find_talon_user_dir() -> str:
+    """Find the Talon user directory by walking up from the package directory."""
+    search_path = str(SCRIPT_DIR)
+    while search_path:
+        user_path = os.path.join(search_path, 'user')
+        dir_name = os.path.basename(search_path)
+        if dir_name in ('talon', '.talon') and os.path.isdir(user_path):
+            has_talon_log = any(
+                os.path.exists(os.path.join(search_path, f'talon.log{suffix}'))
+                for suffix in ['', '.1', '.2', '.3', '.4', '.5']
+            )
+            if has_talon_log:
+                return user_path
+        parent = os.path.dirname(search_path)
+        if parent == search_path:
+            break
+        search_path = parent
+    return None
+
+
+def scan_installed_versions(talon_user_dir: str) -> dict:
+    """Scan all manifest.json files and return {package_name: version}."""
+    SKIP_DIRS = {
+        'node_modules', '.git', '__pycache__', '.venv', 'venv',
+        '.pytest_cache', '.mypy_cache', 'dist', 'build', '.vscode',
+        '.idea', 'recordings', 'backup', '.subtrees'
+    }
+    versions = {}
+    for root, dirs, files in os.walk(talon_user_dir):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        if 'manifest.json' in files:
+            try:
+                with open(os.path.join(root, 'manifest.json'), 'r', encoding='utf-8') as f:
+                    manifest = json.load(f)
+                if manifest.get('_generator') != 'talon-pack':
+                    continue
+                name = manifest.get('name')
+                version = manifest.get('version')
+                if name and version:
+                    versions[name] = version
+            except Exception:
+                pass
+    return versions
+
+
+def outdated_command(directory: Path) -> bool:
+    """Show dependencies that have newer versions installed locally."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+
+        dependencies = manifest.get('dependencies', {})
+        if not dependencies:
+            print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
+            return True
+
+        talon_user_dir = find_talon_user_dir()
+        if not talon_user_dir:
+            print(f"{RED}Error: Could not find Talon user directory{RESET}")
+            return False
+
+        installed = scan_installed_versions(talon_user_dir)
+
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+
+        # Calculate column widths
+        name_width = max(len(name) for name in dependencies)
+        name_width = max(name_width, len("Package"))
+
+        print(f"  {'Package':<{name_width}}   {'Required':<12} {'Installed':<12}")
+        print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12}")
+
+        has_updates = False
+        for dep_name, dep_info in sorted(dependencies.items()):
+            min_ver = dep_info.get('min_version', dep_info.get('version', '?'))
+            installed_ver = installed.get(dep_name)
+
+            if installed_ver is None:
+                status = f"{RED}not found{RESET}"
+            elif installed_ver == min_ver:
+                status = f"{GREEN}up to date{RESET}"
+            else:
+                installed_parts = [int(x) for x in installed_ver.split('.')]
+                required_parts = [int(x) for x in min_ver.split('.')]
+                if installed_parts > required_parts:
+                    status = f"{YELLOW}update available{RESET}"
+                    has_updates = True
+                else:
+                    status = f"{GREEN}up to date{RESET}"
+
+            installed_display = installed_ver or "—"
+            print(f"  {dep_name:<{name_width}}   >={min_ver:<11} {installed_display:<12} {status}")
+
+        if not has_updates:
+            print(f"\n{DIM}All dependencies are up to date.{RESET}")
+
+        print()
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+def update_command(dep_name: str | None, directory: Path, dry_run: bool = False) -> bool:
+    """Update dependency min_version(s) to match installed versions."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            old_content = f.read()
+            manifest = json.loads(old_content)
+
+        dependencies = manifest.get('dependencies', {})
+        if not dependencies:
+            print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
+            return True
+
+        if dep_name and dep_name not in dependencies:
+            print(f"{RED}Error: '{dep_name}' is not a dependency of {directory.name}{RESET}")
+            print(f"{DIM}Dependencies: {', '.join(sorted(dependencies.keys()))}{RESET}")
+            return False
+
+        talon_user_dir = find_talon_user_dir()
+        if not talon_user_dir:
+            print(f"{RED}Error: Could not find Talon user directory{RESET}")
+            return False
+
+        installed = scan_installed_versions(talon_user_dir)
+
+        deps_to_update = [dep_name] if dep_name else sorted(dependencies.keys())
+        updated = []
+
+        for name in deps_to_update:
+            dep_info = dependencies[name]
+            min_ver = dep_info.get('min_version', dep_info.get('version'))
+            installed_ver = installed.get(name)
+
+            if installed_ver is None:
+                print(f"{YELLOW}{name}: not found locally, skipping{RESET}")
+                continue
+
+            if min_ver == installed_ver:
+                continue
+
+            installed_parts = [int(x) for x in installed_ver.split('.')]
+            required_parts = [int(x) for x in min_ver.split('.')]
+            if installed_parts > required_parts:
+                dep_info['min_version'] = installed_ver
+                updated.append((name, min_ver, installed_ver))
+
+        if not updated:
+            print(f"\n{DIM}All dependencies are already up to date.{RESET}")
+            return True
+
+        new_content = json.dumps(manifest, indent=2)
+
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+        has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+        if has_changes:
+            print(format_diff_output(diff_output))
+
+        if not dry_run:
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+
+            # Regenerate readme and shields if needed
+            readme_path = directory / "README.md"
+            if readme_path.exists():
+                run_generator("generate_readme.py", str(directory))
+                if manifest.get('_generatorShields', True):
+                    run_generator("generate_shields.py", str(directory), ["--quiet"])
+
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
 def load_config() -> dict:
     """Load config from tpack.config.json, returning defaults if not found."""
     defaults = {
@@ -441,6 +635,7 @@ def main():
         sys.exit(0 if success else 1)
 
     # tpack version patch/minor/major [directory]
+    # tpack patch/minor/major [directory] (aliases)
     if len(args) >= 1 and args[0] == 'version':
         if len(args) < 2 or args[1] not in ('patch', 'minor', 'major'):
             print("Usage: tpack version <patch|minor|major> [directory] [--dry-run]")
@@ -449,6 +644,37 @@ def main():
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
         dry_run = "--dry-run" in sys.argv
         success = version_command(bump_type, directory, dry_run)
+        sys.exit(0 if success else 1)
+
+    if len(args) >= 1 and args[0] in ('patch', 'minor', 'major'):
+        bump_type = args[0]
+        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+        dry_run = "--dry-run" in sys.argv
+        success = version_command(bump_type, directory, dry_run)
+        sys.exit(0 if success else 1)
+
+    # tpack outdated [directory]
+    if len(args) >= 1 and args[0] == 'outdated':
+        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+        success = outdated_command(directory)
+        sys.exit(0 if success else 1)
+
+    # tpack update [dep_name] [directory]
+    if len(args) >= 1 and args[0] == 'update':
+        dry_run = "--dry-run" in sys.argv
+        dep_name = None
+        directory = Path(".").resolve()
+        # Parse remaining args: could be [dep_name] [directory] or just [directory]
+        if len(args) >= 2:
+            # If it looks like a path, treat as directory; otherwise it's a dep name
+            candidate = Path(args[1])
+            if candidate.is_dir():
+                directory = candidate.resolve()
+            else:
+                dep_name = args[1]
+                if len(args) >= 3:
+                    directory = Path(args[2]).resolve()
+        success = update_command(dep_name, directory, dry_run)
         sys.exit(0 if success else 1)
 
     # Load config
