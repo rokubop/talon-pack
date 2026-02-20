@@ -3,7 +3,7 @@
   "title": "Talon Pack",
   "description": "Catalogs your Talon repo's contributions and dependencies, generates version validation, and updates your README with badges.",
   "version": "3.0.0",
-  "status": "preview",
+  "status": "stable",
   "namespace": "",
   "github": "https://github.com/rokubop/talon-pack",
   "preview": "https://raw.githubusercontent.com/rokubop/talon-pack/main/preview.svg",

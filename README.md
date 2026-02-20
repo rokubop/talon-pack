@@ -1,7 +1,7 @@
 # Talon Pack
 
 ![Version](https://img.shields.io/badge/version-3.0.0-blue)
-![Status](https://img.shields.io/badge/status-preview-orange)
+![Status](https://img.shields.io/badge/status-stable-green)
 ![License](https://img.shields.io/badge/license-Unlicense-green)
 
 ![Preview](preview.svg)
@@ -114,7 +114,6 @@ Bump the version in `manifest.json` using semver:
 tpack patch           # 1.0.0 -> 1.0.1
 tpack minor           # 1.0.0 -> 1.1.0
 tpack major           # 1.0.0 -> 2.0.0
-tpack version patch   # same as above (long form)
 ```
 
 ## Dependency Management
