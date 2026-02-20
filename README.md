@@ -119,7 +119,7 @@ tpack version patch   # same as above (long form)
 
 ## Dependency Management
 
-Check if your dependencies have newer versions installed locally, and update your `manifest.json` to match:
+Check if your local dependencies have newer versions than what's in your `manifest.json`, and update to match. Only compares against packages installed on your machine (does not check GitHub):
 
 ```bash
 tpack outdated                    # Show dependencies with available updates
