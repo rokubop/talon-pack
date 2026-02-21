@@ -625,6 +625,17 @@ def main():
         print(__doc__)
         sys.exit(0)
 
+    if "--version" in sys.argv or "-V" in sys.argv:
+        tpack_dir = Path(__file__).resolve().parent
+        manifest_path = tpack_dir / "manifest.json"
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+            print(f"talon-pack v{manifest.get('version', 'unknown')}")
+        except Exception:
+            print("talon-pack (unknown version)")
+        sys.exit(0)
+
     # Handle subcommands
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
 
@@ -638,8 +649,21 @@ def main():
     # tpack patch/minor/major [directory] (aliases)
     if len(args) >= 1 and args[0] == 'version':
         if len(args) < 2 or args[1] not in ('patch', 'minor', 'major'):
-            print("Usage: tpack version <patch|minor|major> [directory] [--dry-run]")
-            sys.exit(1)
+            directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+            manifest_path = directory / "manifest.json"
+            if not manifest_path.exists():
+                print(f"No manifest.json found in {directory}")
+                sys.exit(1)
+            try:
+                with open(manifest_path, 'r', encoding='utf-8') as f:
+                    manifest = json.load(f)
+                name = manifest.get('name', directory.name)
+                version = manifest.get('version', 'unknown')
+                print(f"{name} v{version}")
+            except Exception as e:
+                print(f"Error reading manifest.json: {e}")
+                sys.exit(1)
+            sys.exit(0)
         bump_type = args[1]
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
         dry_run = "--dry-run" in sys.argv

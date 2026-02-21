@@ -16,6 +16,8 @@ Catalogs your Talon repo's contributions and dependencies, generates version val
 $ tpack [path]              # Create or update manifest, _version, and readme
 $ tpack --dry-run [path]    # Preview changes without writing files
 $ tpack info [path]         # Analyze any Talon folder for contributions and dependencies
+$ tpack version             # Show current package version
+$ tpack --version           # Show talon-pack CLI version
 $ tpack help                # Show all commands and options
 ```
 
@@ -126,53 +128,6 @@ tpack update                      # Update all dependencies to installed version
 tpack update talon-mouse-rig      # Update a specific dependency
 tpack update --dry-run             # Preview changes without writing
 ```
-
-## Scripts
-
-Individual scripts can be run directly for specific tasks:
-
-### generate_manifest.py
-Parses Python and Talon files to detect Talon entities (actions, settings, tags, lists, modes, scopes, captures, and apps) you contribute or depend on. Scans user directory to find all other packages with manifests to build an index of available packages. Maps your imported entities to specific packages and their versions. Creates or updates `manifest.json` with all discovered information, preserving your manual edits to fields like name, description, etc.
-
-```bash
-tpack --manifest-only
-python generate_manifest.py ../path-to-talon-repo
-```
-
-### generate_version.py
-Generates a `_version.py` file that exposes your `manifest.json` package version as a Talon action e.g., `actions.user.my_package_version()`. Also includes automatic dependency validation on Talon startup, printing clear error messages if dependencies are missing or outdated with installation/update instructions for other packages that have a `{user.other_package}_version()` Talon action.
-
-```bash
-tpack --version-only
-python generate_version.py ../path-to-talon-repo
-```
-
-### generate_readme.py
-Creates or updates `README.md` files with shield badges, description, and installation instructions. For existing READMEs, only updates the shield badges (preserves your custom installation instructions). Automatically includes `preview.png` if it exists in the package directory.
-
-```bash
-tpack --readme-only
-python generate_readme.py ../path-to-talon-repo
-```
-
-### generate_shields.py
-Generates or updates shield badges in your `README.md` based on your `manifest.json`. Badges show package version, status, platform, license, and Talon Beta requirement (if applicable). If no README exists, prints badges to console for copy/paste.
-
-```bash
-tpack --shields-only
-python generate_shields.py ../path-to-talon-repo
-```
-
-### generate_install_block.py
-Outputs formatted installation instructions for your package based on your `manifest.json`, including dependency information. Useful for quickly generating README installation sections. Only supports single directory.
-
-```bash
-tpack --install-block-only
-python generate_install_block.py ../path-to-talon-repo
-```
-
-### Additional notes
-All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack repo-1 repo-2`
 
 ## Example `manifest.json`
 
@@ -423,6 +378,25 @@ app.register("ready", validate_dependencies)
 | _generatorShields | Whether to generate/update shield badges in README.md (default: true). Set to false to disable automatic shield generation. |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.
+
+## Individual Scripts
+
+Scripts can also be run individually if you only need a specific generator:
+
+| Script | Flag | Description |
+|--------|------|-------------|
+| `generate_manifest.py` | `--manifest-only` | Detects Talon entities, builds dependency map, creates/updates `manifest.json` |
+| `generate_version.py` | `--version-only` | Generates `_version.py` with version action and dependency validation |
+| `generate_readme.py` | `--readme-only` | Creates/updates `README.md` with badges and installation instructions |
+| `generate_shields.py` | `--shields-only` | Generates/updates shield badges in `README.md` |
+| `generate_install_block.py` | `--install-block-only` | Outputs formatted installation instructions |
+
+```bash
+tpack --manifest-only my_repo    # Run just the manifest generator
+python generate_manifest.py ../path-to-talon-repo  # Or run the script directly
+```
+
+All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack repo-1 repo-2`
 
 ## Troubleshooting
 
