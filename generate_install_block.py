@@ -9,35 +9,14 @@ _script_dir = str(Path(__file__).parent.resolve())
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
-def generate_pip_dependencies_markdown(pip_dependencies: dict) -> str | None:
-    """Generate just the pip dependencies section markdown. Returns None if no pip deps."""
+def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
+    """Generate the pip install command block. Returns None if no pip deps."""
     if not pip_dependencies:
         return None
 
-    lines = ["### Pip Dependencies"]
-    lines.append("\nInstall using Talon's bundled Python:")
-
-    # Split into direct and transitive
-    direct_pip = {}
-    transitive_pip = {}
-    for pip_name, pip_info in pip_dependencies.items():
-        if pip_info.get('required_by'):
-            transitive_pip[pip_name] = pip_info
-        else:
-            direct_pip[pip_name] = pip_info
-
-    # List direct pip deps
-    for pip_name, pip_info in direct_pip.items():
-        version = pip_info.get('version', '')
-        suffix = f" ({version})" if version and version != '*' else ""
-        lines.append(f"- **{pip_name}**{suffix}")
-
-    # List transitive pip deps
-    for pip_name, pip_info in transitive_pip.items():
-        required_by = pip_info.get('required_by', [])
-        version = pip_info.get('version', '')
-        suffix = f" ({version})" if version and version != '*' else ""
-        lines.append(f"- **{pip_name}**{suffix} — required by {', '.join(required_by)}")
+    lines = []
+    lines.append("Install Python packages using Talon's bundled Python:")
+    lines.append("")
 
     # Build install specs (include version constraint if specified)
     pip_specs = []
@@ -48,7 +27,6 @@ def generate_pip_dependencies_markdown(pip_dependencies: dict) -> str | None:
         else:
             pip_specs.append(pip_name)
     all_pip_specs = " ".join(pip_specs)
-    lines.append("")
     lines.append("```sh")
     lines.append("# Windows")
     lines.append(f"%APPDATA%\\talon\\.venv\\Scripts\\pip install {all_pip_specs}")
@@ -83,9 +61,10 @@ def generate_installation_markdown(manifest: dict) -> str:
     # Combine Requirements and Dependencies sections
     has_requirements = bool(requires)
     has_dependencies = bool(dependencies)
+    has_pip = bool(pip_dependencies)
+    has_any_deps = has_requirements or has_dependencies or has_pip
 
-    if has_requirements or has_dependencies:
-        # Always use "Dependencies" as the title
+    if has_any_deps:
         lines.append("\n### Dependencies")
         lines.append("")
 
@@ -133,26 +112,45 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+){suffix}")
 
-    # Dev dependencies section
-    if dev_dependencies:
-        lines.append("\n### Development Dependencies")
-        lines.append("\nOptional dependencies for development and testing:")
+        # Add pip dependencies to the listing
+        if has_pip:
+            direct_pip = {k: v for k, v in pip_dependencies.items() if not v.get('required_by')}
+            transitive_pip = {k: v for k, v in pip_dependencies.items() if v.get('required_by')}
 
-        for dep_name, dep_info in dev_dependencies.items():
-            version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
-            github = dep_info.get('github', '')
-            if github:
-                lines.append(f"- [**{dep_name}**]({github}) (v{version}+)")
-            else:
-                lines.append(f"- **{dep_name}** (v{version}+)")
+            for pip_name, pip_info in direct_pip.items():
+                version = pip_info.get('version', '')
+                suffix = f" ({version})" if version and version != '*' else ""
+                pypi_url = f"https://pypi.org/project/{pip_name}/"
+                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package)")
 
-    # Pip dependencies section
-    pip_section = generate_pip_dependencies_markdown(pip_dependencies)
-    if pip_section:
-        lines.append("\n" + pip_section)
+            for pip_name, pip_info in transitive_pip.items():
+                required_by = pip_info.get('required_by', [])
+                version = pip_info.get('version', '')
+                suffix = f" ({version})" if version and version != '*' else ""
+                pypi_url = f"https://pypi.org/project/{pip_name}/"
+                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) — required by {', '.join(required_by)}")
 
-    # Install section
-    if requires or dependencies or dev_dependencies:
+    # Determine number of install steps
+    has_pip_step = has_pip
+    has_clone_step = True  # Always have a clone step
+    use_numbered_steps = has_pip_step  # Number steps when there are 2+
+
+    step = 1
+
+    # Step: Install Python packages (before cloning so code can load)
+    if has_pip_step:
+        pip_commands = generate_pip_install_commands(pip_dependencies)
+        if use_numbered_steps:
+            lines.append(f"\n### {step}. Install Python Packages")
+            step += 1
+        else:
+            lines.append("\n### Install Python Packages")
+        lines.append(f"\n{pip_commands}")
+
+    # Step: Clone repositories
+    if use_numbered_steps:
+        lines.append(f"\n### {step}. Clone Repositories")
+    elif has_any_deps or dev_dependencies:
         lines.append("\n### Install")
 
     if dependencies:
@@ -203,16 +201,28 @@ def generate_installation_markdown(manifest: dict) -> str:
     else:
         lines.append("git clone <github_url>  # Add github URL to manifest.json")
 
-    # Dev dependencies clones (after main repo since they're optional)
+    lines.append("```")
+
+    # Dev dependencies section (at the bottom — these are optional)
     if dev_dependencies:
-        lines.append("")
-        lines.append("# Dev Dependencies (optional)")
+        lines.append("\n### Development Dependencies")
+        lines.append("\nOptional dependencies for development and testing:")
+
+        for dep_name, dep_info in dev_dependencies.items():
+            version = dep_info.get('min_version') or dep_info.get('version', '')
+            github = dep_info.get('github', '')
+            version_suffix = f" (v{version}+)" if version else ""
+            if github:
+                lines.append(f"- [**{dep_name}**]({github}){version_suffix}")
+            else:
+                lines.append(f"- **{dep_name}**{version_suffix}")
+
+        lines.append("\n```sh")
         for dep_name, dep_info in dev_dependencies.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
-
-    lines.append("```")
+        lines.append("```")
 
     # Note
     if dependencies or dev_dependencies:

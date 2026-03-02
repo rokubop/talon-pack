@@ -1307,6 +1307,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
             package_dependencies = {}
             pip_dependencies = {}
             scanned_versions = {}  # Track scanned versions to compare with user's specified versions
+            current_pkg_name = existing_manifest_data.get('name', package_name)
             if has_dependencies:
                 # Lazy load: only scan manifests if we have dependencies to resolve
                 if entity_to_package is None:
@@ -1317,7 +1318,6 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                         print(f"  Found {manifest_count} packages in workspace\n")
 
                 # Resolve package dependencies (exclude current package to prevent self-dependency)
-                current_pkg_name = existing_manifest_data.get('name', package_name)
                 package_dependencies = resolve_package_dependencies(new_entity_data.depends, entity_to_package, current_pkg_name)
 
                 # Resolve transitive dependencies
