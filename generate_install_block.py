@@ -49,15 +49,37 @@ def generate_installation_markdown(manifest: dict) -> str:
                 description = requirement_descriptions.get(req, f"**{req}**")
                 lines.append(f"- {description}")
 
-        # Add dependencies
+        # Split dependencies into direct and transitive
+        direct_deps = {}
+        transitive_deps = {}
         if has_dependencies:
             for dep_name, dep_info in dependencies.items():
+                if dep_info.get('required_by'):
+                    transitive_deps[dep_name] = dep_info
+                else:
+                    direct_deps[dep_name] = dep_info
+
+        # Add direct dependencies
+        if direct_deps:
+            for dep_name, dep_info in direct_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
                 github = dep_info.get('github', '')
                 if github:
                     lines.append(f"- [**{dep_name}**]({github}) (v{version}+)")
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+)")
+
+        # Add transitive dependencies
+        if transitive_deps:
+            for dep_name, dep_info in transitive_deps.items():
+                version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
+                github = dep_info.get('github', '')
+                required_by = dep_info.get('required_by', [])
+                suffix = f" — required by {', '.join(required_by)}"
+                if github:
+                    lines.append(f"- [**{dep_name}**]({github}) (v{version}+){suffix}")
+                else:
+                    lines.append(f"- **{dep_name}** (v{version}+){suffix}")
 
     # Dev dependencies section
     if dev_dependencies:
@@ -93,9 +115,25 @@ def generate_installation_markdown(manifest: dict) -> str:
         lines.append("")
         lines.append("# Dependencies")
         for dep_name, dep_info in dependencies.items():
+            required_by = dep_info.get('required_by')
+            if required_by:
+                continue  # Show transitive deps separately
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
+
+        # Transitive dependencies
+        has_transitive = any(dep_info.get('required_by') for dep_info in dependencies.values())
+        if has_transitive:
+            lines.append("")
+            lines.append("# Also required (by dependencies above)")
+            for dep_name, dep_info in dependencies.items():
+                required_by = dep_info.get('required_by')
+                if not required_by:
+                    continue
+                github = dep_info.get('github', '')
+                if github:
+                    lines.append(f"git clone {github}")
 
     # This repo
     if dependencies or dev_dependencies:

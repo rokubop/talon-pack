@@ -163,6 +163,14 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
     content, dep_actions, dep_warnings = update_dependency_versions(content, manifest)
     actions.extend(dep_actions)
 
+    # Update github_url placeholder if manifest now has a github URL
+    github_url = manifest.get("github", "")
+    if github_url:
+        placeholder = "git clone <github_url>  # Add github URL to manifest.json"
+        if placeholder in content:
+            content = content.replace(placeholder, f"git clone {github_url}")
+            actions.append(f"updated github_url placeholder")
+
     # Check if Installation/Install/Setup section exists
     install_section_pattern = r"^#{1,6}\s+.*\b(Installation|Install|Setup)\b"
 
