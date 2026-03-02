@@ -108,7 +108,10 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
             name_mentioned = dep_name in content
 
             if not github_mentioned and not name_mentioned:
-                warnings.append(f"{dep_name} not mentioned in README")
+                warnings.append(
+                    f"{dep_name} not mentioned in README. "
+                    f"Run `tpack --install-block-only` to see the install block"
+                )
 
     return content, actions, warnings
 
@@ -188,6 +191,15 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
             else:
                 # No common sections, add at the end
                 content = content.rstrip() + "\n\n" + installation + "\n"
+
+    # Warn if pip dependencies exist but README doesn't mention pip install
+    pip_deps = manifest.get("pipDependencies", {})
+    if pip_deps and "pip install" not in content:
+        pip_names = ", ".join(sorted(pip_deps.keys()))
+        dep_warnings.append(
+            f"pip dependencies ({pip_names}) not mentioned in README. "
+            f"Run `tpack --install-block-only` to see the pip install block"
+        )
 
     return content, actions, dep_warnings
 

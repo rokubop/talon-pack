@@ -12,6 +12,9 @@ Usage:
   tpack outdated [dir]             Show dependencies with newer local versions
   tpack update [dep] [dir]         Update dependency min_version to installed version
   tpack update [dir]               Update all dependencies to installed versions
+  tpack pip <pkg> [dir]            Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
+  tpack pip remove <pkg> [dir]     Remove pip dependency
+  tpack pip list [dir]             List pip dependencies
   tpack --dry-run                Preview changes without writing files
   tpack -v, --verbose            Show detailed output (default: show only changes)
   tpack --manifest-only          Only run manifest generator
@@ -477,6 +480,189 @@ def update_command(dep_name: str | None, directory: Path, dry_run: bool = False)
         return False
 
 
+def parse_pip_spec(spec: str) -> tuple[str, dict, str | None]:
+    """Parse a pip-style package spec into (name, info_dict, error).
+    Examples:
+        'vgamepad'         -> ('vgamepad', {'version': '*'}, None)
+        'vgamepad>=1.0.0'  -> ('vgamepad', {'version': '>=1.0.0'}, None)
+        'vgamepad==1.0.2'  -> ('vgamepad', {'version': '==1.0.2'}, None)
+        'vgamepad>bad'     -> ('vgamepad', {}, 'invalid version ...')
+    """
+    import re
+    match = re.match(r'^([A-Za-z0-9_.-]+)(.*)', spec)
+    if not match:
+        return spec, {}, f"invalid package name: {spec}"
+    name = match.group(1)
+    version_part = match.group(2).strip()
+    if version_part:
+        # Validate version specifier format
+        version_pattern = re.compile(r'^(==|>=|<=|!=|~=|>|<)\d+(\.\d+)*$')
+        if not version_pattern.match(version_part):
+            return name, {}, (
+                f"invalid version specifier: {version_part}\n"
+                f"  Expected formats: ==1.0.0, >=1.0.0, <=1.0.0, !=1.0.0, ~=1.0.0"
+            )
+        return name, {'version': version_part}, None
+    return name, {'version': '*'}, None
+
+
+def reorder_manifest_key(manifest: dict, key: str, after: str) -> dict:
+    """Reorder manifest so `key` appears right after `after`."""
+    if key not in manifest or after not in manifest:
+        return manifest
+    value = manifest.pop(key)
+    result = {}
+    for k, v in manifest.items():
+        result[k] = v
+        if k == after:
+            result[key] = value
+    if key not in result:
+        result[key] = value
+    return result
+
+
+def pip_command(action: str, package_spec: str | None, directory: Path, dry_run: bool = False) -> bool:
+    """Add or remove a pip dependency."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    if action == "add":
+        if not package_spec:
+            print(f"{RED}Error: package name required{RESET}")
+            print(f"Usage: tpack pip <package> [directory]")
+            return False
+
+        name, info, error = parse_pip_spec(package_spec)
+        if error:
+            print(f"{RED}Error: {error}{RESET}")
+            return False
+
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                old_content = f.read()
+                manifest = json.loads(old_content)
+
+            pip_deps = manifest.get('pipDependencies', {})
+
+            if name in pip_deps:
+                existing = pip_deps[name]
+                new_version = info.get('version')
+                old_version = existing.get('version')
+                if new_version == old_version or (not new_version and not old_version):
+                    print(f"{DIM}{name} is already in pipDependencies{RESET}")
+                    return True
+                # Update version
+                if new_version:
+                    pip_deps[name]['version'] = new_version
+                elif 'version' in pip_deps[name]:
+                    del pip_deps[name]['version']
+            else:
+                pip_deps[name] = info
+
+            manifest['pipDependencies'] = dict(sorted(pip_deps.items()))
+            manifest = reorder_manifest_key(manifest, 'pipDependencies', 'devDependencies')
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Added {name} to pipDependencies{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    elif action == "remove":
+        if not package_spec:
+            print(f"{RED}Error: package name required{RESET}")
+            print(f"Usage: tpack pip remove <package> [directory]")
+            return False
+
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                old_content = f.read()
+                manifest = json.loads(old_content)
+
+            pip_deps = manifest.get('pipDependencies', {})
+
+            if package_spec not in pip_deps:
+                print(f"{RED}Error: '{package_spec}' is not in pipDependencies{RESET}")
+                if pip_deps:
+                    print(f"{DIM}Current pip dependencies: {', '.join(sorted(pip_deps.keys()))}{RESET}")
+                return False
+
+            del pip_deps[package_spec]
+            if pip_deps:
+                manifest['pipDependencies'] = pip_deps
+            elif 'pipDependencies' in manifest:
+                del manifest['pipDependencies']
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Removed {package_spec} from pipDependencies{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    elif action == "list":
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+
+            pip_deps = manifest.get('pipDependencies', {})
+            if not pip_deps:
+                print(f"{DIM}No pip dependencies in {directory.name}{RESET}")
+                return True
+
+            print(f"\n{CYAN}{directory.name}{RESET} pip dependencies:")
+            for name, info in sorted(pip_deps.items()):
+                version = info.get('version', '')
+                required_by = info.get('required_by')
+                parts = [f"  {name}"]
+                if version and version != '*':
+                    parts.append(f" ({version})")
+                if required_by:
+                    parts.append(f" {DIM}— required by {', '.join(required_by)}{RESET}")
+                print("".join(parts))
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    else:
+        print(f"{RED}Unknown pip action: {action}{RESET}")
+        print(f"Usage: tpack pip <package>          Add pip dependency")
+        print(f"       tpack pip remove <package>   Remove pip dependency")
+        print(f"       tpack pip list               List pip dependencies")
+        return False
+
+
 def load_config() -> dict:
     """Load config from tpack.config.json, returning defaults if not found."""
     defaults = {
@@ -699,6 +885,29 @@ def main():
                 if len(args) >= 3:
                     directory = Path(args[2]).resolve()
         success = update_command(dep_name, directory, dry_run)
+        sys.exit(0 if success else 1)
+
+    # tpack pip <package> [directory]
+    # tpack pip remove <package> [directory]
+    # tpack pip list [directory]
+    if len(args) >= 1 and args[0] == 'pip':
+        dry_run = "--dry-run" in sys.argv
+        if len(args) >= 2 and args[1] == 'remove':
+            package_spec = args[2] if len(args) >= 3 else None
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = pip_command("remove", package_spec, directory, dry_run)
+        elif len(args) >= 2 and args[1] == 'list':
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+            success = pip_command("list", None, directory, dry_run)
+        elif len(args) >= 2:
+            package_spec = args[1]
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+            success = pip_command("add", package_spec, directory, dry_run)
+        else:
+            print("Usage: tpack pip <package>          Add pip dependency")
+            print("       tpack pip remove <package>   Remove pip dependency")
+            print("       tpack pip list               List pip dependencies")
+            sys.exit(1)
         sys.exit(0 if success else 1)
 
     # Load config

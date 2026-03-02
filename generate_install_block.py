@@ -9,11 +9,63 @@ _script_dir = str(Path(__file__).parent.resolve())
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
+def generate_pip_dependencies_markdown(pip_dependencies: dict) -> str | None:
+    """Generate just the pip dependencies section markdown. Returns None if no pip deps."""
+    if not pip_dependencies:
+        return None
+
+    lines = ["### Pip Dependencies"]
+    lines.append("\nInstall using Talon's bundled Python:")
+
+    # Split into direct and transitive
+    direct_pip = {}
+    transitive_pip = {}
+    for pip_name, pip_info in pip_dependencies.items():
+        if pip_info.get('required_by'):
+            transitive_pip[pip_name] = pip_info
+        else:
+            direct_pip[pip_name] = pip_info
+
+    # List direct pip deps
+    for pip_name, pip_info in direct_pip.items():
+        version = pip_info.get('version', '')
+        suffix = f" ({version})" if version and version != '*' else ""
+        lines.append(f"- **{pip_name}**{suffix}")
+
+    # List transitive pip deps
+    for pip_name, pip_info in transitive_pip.items():
+        required_by = pip_info.get('required_by', [])
+        version = pip_info.get('version', '')
+        suffix = f" ({version})" if version and version != '*' else ""
+        lines.append(f"- **{pip_name}**{suffix} — required by {', '.join(required_by)}")
+
+    # Build install specs (include version constraint if specified)
+    pip_specs = []
+    for pip_name, pip_info in pip_dependencies.items():
+        version = pip_info.get('version', '')
+        if version and version != '*':
+            pip_specs.append(f"{pip_name}{version}")
+        else:
+            pip_specs.append(pip_name)
+    all_pip_specs = " ".join(pip_specs)
+    lines.append("")
+    lines.append("```sh")
+    lines.append("# Windows")
+    lines.append(f"%APPDATA%\\talon\\.venv\\Scripts\\pip install {all_pip_specs}")
+    lines.append("")
+    lines.append("# Mac/Linux")
+    lines.append(f"~/.talon/.venv/bin/pip install {all_pip_specs}")
+    lines.append("```")
+
+    return "\n".join(lines)
+
+
 def generate_installation_markdown(manifest: dict) -> str:
     """Generate installation section markdown from manifest data."""
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
     dev_dependencies = manifest.get('devDependencies', {})
+    pip_dependencies = manifest.get('pipDependencies', {})
     requires = manifest.get('requires', [])
 
     # Map requirement keys to user-friendly descriptions
@@ -93,6 +145,11 @@ def generate_installation_markdown(manifest: dict) -> str:
                 lines.append(f"- [**{dep_name}**]({github}) (v{version}+)")
             else:
                 lines.append(f"- **{dep_name}** (v{version}+)")
+
+    # Pip dependencies section
+    pip_section = generate_pip_dependencies_markdown(pip_dependencies)
+    if pip_section:
+        lines.append("\n" + pip_section)
 
     # Install section
     if requires or dependencies or dev_dependencies:
