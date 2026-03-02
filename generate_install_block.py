@@ -15,7 +15,7 @@ def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
         return None
 
     lines = []
-    lines.append("Install Python packages using Talon's bundled Python:")
+    lines.append("Install using Talon's bundled pip:")
     lines.append("")
 
     # Build install specs (include version constraint if specified)
@@ -29,10 +29,10 @@ def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
     all_pip_specs = " ".join(pip_specs)
     lines.append("```sh")
     lines.append("# Windows")
-    lines.append(f"%APPDATA%\\talon\\.venv\\Scripts\\pip install {all_pip_specs}")
+    lines.append(f"~/AppData/Roaming/talon/venv/[VERSION]/Scripts/pip.bat install {all_pip_specs}")
     lines.append("")
-    lines.append("# Mac/Linux")
-    lines.append(f"~/.talon/.venv/bin/pip install {all_pip_specs}")
+    lines.append("# Linux/Mac")
+    lines.append(f"~/.talon/bin/pip install {all_pip_specs}")
     lines.append("```")
 
     return "\n".join(lines)
@@ -159,10 +159,10 @@ def generate_installation_markdown(manifest: dict) -> str:
         lines.append("\nClone this repo into your [Talon](https://talonvoice.com/) user directory:")
 
     lines.append("\n```sh")
-    lines.append("# mac and linux")
+    lines.append("# Mac/Linux")
     lines.append("cd ~/.talon/user")
     lines.append("")
-    lines.append("# windows")
+    lines.append("# Windows")
     lines.append("cd ~/AppData/Roaming/talon/user")
 
     # Dependencies clones

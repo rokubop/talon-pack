@@ -192,6 +192,9 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
                 # No common sections, add at the end
                 content = content.rstrip() + "\n\n" + installation + "\n"
 
+    # Re-check warnings against final content (installation section may have been added above)
+    dep_warnings = [w for w in dep_warnings if not _warning_resolved_by_content(w, content)]
+
     # Warn if pip dependencies exist but README doesn't mention pip install
     pip_deps = manifest.get("pipDependencies", {})
     if pip_deps and "pip install" not in content:
@@ -202,6 +205,15 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
         )
 
     return content, actions, dep_warnings
+
+
+def _warning_resolved_by_content(warning: str, content: str) -> bool:
+    """Check if a 'not mentioned in README' warning is now resolved by the final content."""
+    if "not mentioned in README" not in warning:
+        return False
+    # Extract the dep name from the warning (format: "{dep_name} not mentioned in README...")
+    dep_name = warning.split(" not mentioned")[0]
+    return dep_name in content
 
 
 def process_directory(package_dir: str, dry_run: bool = False, verbose: bool = False, alt_manifest_path: str = None):
