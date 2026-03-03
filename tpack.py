@@ -9,13 +9,17 @@ Usage:
   tpack minor [dir]               Bump minor version (1.0.0 -> 1.1.0)
   tpack major [dir]               Bump major version (1.0.0 -> 2.0.0)
   tpack version patch [dir]       Same as above (long form)
-  tpack outdated [dir]             Show dependencies with newer local versions
-  tpack update [dep] [dir]         Update dependency min_version to installed version
-  tpack update [dir]               Update all dependencies to installed versions
+  tpack install [dir]              Install dependencies from manifest
+  tpack install <github_url>       Install a package (+ its dependencies)
+  tpack update [dir]               Pull latest for all dependencies
+  tpack outdated [dir]             Check for newer versions (local vs remote)
+  tpack sync [dep] [dir]           Update dependency min_version to installed version
+  tpack sync [dir]                 Update all dependencies to installed versions
   tpack pip <pkg> [dir]            Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
   tpack --dry-run                Preview changes without writing files
+  tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
   tpack --manifest-only          Only run manifest generator
   tpack --version-only           Only run version generator
@@ -311,7 +315,7 @@ def find_talon_user_dir() -> str:
 
 
 def scan_installed_versions(talon_user_dir: str) -> dict:
-    """Scan all manifest.json files and return {package_name: version}."""
+    """Scan all manifest.json files and return {package_name: {"version": version, "path": path}}."""
     SKIP_DIRS = {
         'node_modules', '.git', '__pycache__', '.venv', 'venv',
         '.pytest_cache', '.mypy_cache', 'dist', 'build', '.vscode',
@@ -329,14 +333,229 @@ def scan_installed_versions(talon_user_dir: str) -> dict:
                 name = manifest.get('name')
                 version = manifest.get('version')
                 if name and version:
-                    versions[name] = version
+                    versions[name] = {"version": version, "path": root}
             except Exception:
                 pass
     return versions
 
 
 def outdated_command(directory: Path) -> bool:
-    """Show dependencies that have newer versions installed locally."""
+    """Show packages with newer versions available (local vs remote)."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+
+        local_version = manifest.get('version', '0.0.0')
+        github_url = manifest.get('github', '')
+        dependencies = manifest.get('dependencies', {})
+
+        # Build list of packages to check: self + dependencies
+        packages_to_check = {}
+
+        # Include the current package itself
+        pkg_name = manifest.get('name', directory.name)
+        packages_to_check[pkg_name] = {
+            "local_version": local_version,
+            "github": github_url,
+            "is_self": True,
+        }
+
+        # Include dependencies
+        talon_user_dir = None
+        installed = {}
+        if dependencies:
+            talon_user_dir = find_talon_user_dir()
+            if not talon_user_dir:
+                print(f"{RED}Error: Could not find Talon user directory{RESET}")
+                return False
+            installed = scan_installed_versions(talon_user_dir)
+
+        for dep_name, dep_info in dependencies.items():
+            installed_info = installed.get(dep_name)
+            packages_to_check[dep_name] = {
+                "local_version": installed_info["version"] if installed_info else None,
+                "github": dep_info.get('github', ''),
+                "is_self": False,
+            }
+
+        # Fetch remote versions
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+        print(f"{DIM}  Checking remote versions...{RESET}")
+
+        remote_versions = {}
+        for name, info in packages_to_check.items():
+            pkg_github = info["github"]
+            if pkg_github:
+                remote_manifest = fetch_remote_manifest(pkg_github)
+                if remote_manifest:
+                    remote_versions[name] = remote_manifest.get('version')
+
+        # Calculate column widths
+        name_width = max(len(name) for name in packages_to_check)
+        name_width = max(name_width, len("Package"))
+
+        print(f"  {'Package':<{name_width}}   {'Local':<12} {'Remote':<12} {'Status'}")
+        print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12} {'-' * 16}")
+
+        has_updates = False
+        for name, info in sorted(packages_to_check.items()):
+            local_ver = info["local_version"]
+            remote_ver = remote_versions.get(name)
+
+            if local_ver is None:
+                status = f"{RED}not installed{RESET}"
+                has_updates = True
+            elif remote_ver and remote_ver != local_ver:
+                remote_parts = [int(x) for x in remote_ver.split('.')]
+                local_parts = [int(x) for x in local_ver.split('.')]
+                if remote_parts > local_parts:
+                    status = f"{YELLOW}update available{RESET}"
+                    has_updates = True
+                else:
+                    status = f"{GREEN}up to date{RESET}"
+            else:
+                status = f"{GREEN}up to date{RESET}"
+
+            local_display = local_ver or "-"
+            remote_display = remote_ver or "-"
+            print(f"  {name:<{name_width}}   {local_display:<12} {remote_display:<12} {status}")
+
+        if not has_updates:
+            print(f"\n{DIM}All packages are up to date.{RESET}")
+
+        print()
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+def find_talon_pip() -> str | None:
+    """Find Talon's bundled pip executable (highest version on Windows)."""
+    import platform
+    system = platform.system()
+    if system == "Windows":
+        talon_dir = Path(os.environ.get("APPDATA", "")) / "talon"
+        venv_dir = talon_dir / "venv"
+        if venv_dir.exists():
+            candidates = []
+            for version_dir in venv_dir.iterdir():
+                pip_path = version_dir / "Scripts" / "pip.bat"
+                if pip_path.exists():
+                    try:
+                        ver = tuple(int(x) for x in version_dir.name.split('.'))
+                        candidates.append((ver, pip_path))
+                    except ValueError:
+                        candidates.append(((0,), pip_path))
+            if candidates:
+                candidates.sort(reverse=True)
+                return str(candidates[0][1])
+    else:
+        pip_path = Path.home() / ".talon" / "bin" / "pip"
+        if pip_path.exists():
+            return str(pip_path)
+    return None
+
+
+def get_installed_pip_packages(pip_path: str) -> set[str]:
+    """Get set of installed pip package names (lowercased)."""
+    try:
+        result = subprocess.run(
+            [pip_path, "list", "--format=json"],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            packages = json.loads(result.stdout)
+            return {pkg["name"].lower() for pkg in packages}
+    except Exception:
+        pass
+    return set()
+
+
+def confirm_action(message: str, auto_yes: bool = False) -> bool:
+    """Prompt user for y/N confirmation. Returns True if confirmed."""
+    if auto_yes:
+        print(f"{message} (auto-confirmed)")
+        return True
+    try:
+        response = input(f"{message} [y/N] ").strip().lower()
+        return response in ('y', 'yes')
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+
+
+def repo_name_from_url(url: str) -> str:
+    """Extract repo name from a GitHub URL."""
+    name = url.rstrip('/').split('/')[-1]
+    if name.endswith('.git'):
+        name = name[:-4]
+    return name
+
+
+def parse_github_url(url: str) -> tuple[str, str] | None:
+    """Extract (owner, repo) from a GitHub URL. Returns None if not a valid GitHub URL."""
+    import re
+    match = re.match(r'https://github\.com/([^/]+)/([^/.]+)', url.rstrip('/'))
+    if match:
+        return match.group(1), match.group(2)
+    return None
+
+
+def fetch_remote_manifest(url: str) -> dict | None:
+    """Fetch manifest.json from a GitHub repo without cloning. Tries main then master branch."""
+    from urllib.request import urlopen, Request
+    from urllib.error import URLError, HTTPError
+
+    parsed = parse_github_url(url)
+    if not parsed:
+        return None
+    owner, repo = parsed
+
+    for branch in ("main", "master"):
+        raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/manifest.json"
+        try:
+            req = Request(raw_url, headers={"User-Agent": "talon-pack"})
+            with urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                if data.get('_generator') == 'talon-pack':
+                    return data
+        except (HTTPError, URLError, json.JSONDecodeError, Exception):
+            continue
+    return None
+
+
+def install_command(target: str | None, directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+    """Install dependencies from manifest or install a package from a GitHub URL."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    # If target looks like a GitHub URL, install that single package
+    if target and target.startswith("https://github.com/"):
+        return install_from_url(target, dry_run, auto_yes)
+
+    if target:
+        # target might be a directory
+        candidate = Path(target)
+        if candidate.is_dir():
+            directory = candidate.resolve()
+        else:
+            print(f"{RED}Error: '{target}' is not a valid directory or GitHub URL{RESET}")
+            print(f"Usage: tpack install [dir]            Install dependencies from manifest")
+            print(f"       tpack install <github_url>     Install a package")
+            return False
+
+    return install_from_manifest(directory, dry_run, auto_yes)
+
+
+def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+    """Install dependencies listed in a manifest.json."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
     manifest_path = directory / "manifest.json"
@@ -349,7 +568,9 @@ def outdated_command(directory: Path) -> bool:
             manifest = json.load(f)
 
         dependencies = manifest.get('dependencies', {})
-        if not dependencies:
+        pip_deps = manifest.get('pipDependencies', {})
+
+        if not dependencies and not pip_deps:
             print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
             return True
 
@@ -360,38 +581,311 @@ def outdated_command(directory: Path) -> bool:
 
         installed = scan_installed_versions(talon_user_dir)
 
+        # Determine what needs to be installed
+        to_clone = []
+        already_installed = []
+        for dep_name, dep_info in sorted(dependencies.items()):
+            github_url = dep_info.get('github', '')
+            if dep_name in installed:
+                already_installed.append(dep_name)
+            elif github_url:
+                to_clone.append((dep_name, github_url))
+            else:
+                print(f"{YELLOW}Warning: {dep_name} has no github URL, cannot install{RESET}")
+
+        pip_to_install = []
+        pip_already_installed = []
+        if pip_deps:
+            pip_path = find_talon_pip()
+            installed_pip = get_installed_pip_packages(pip_path) if pip_path else set()
+            for pip_name, pip_info in sorted(pip_deps.items()):
+                if pip_name.lower() in installed_pip:
+                    pip_already_installed.append(pip_name)
+                    continue
+                version = pip_info.get('version', '')
+                if version and version != '*':
+                    pip_to_install.append(f"{pip_name}{version}")
+                else:
+                    pip_to_install.append(pip_name)
+
+        # Show plan
         print(f"\n{CYAN}{directory.name}/{RESET}")
 
-        # Calculate column widths
-        name_width = max(len(name) for name in dependencies)
-        name_width = max(name_width, len("Package"))
+        if already_installed:
+            for name in already_installed:
+                print(f"  {DIM}{name} - already installed{RESET}")
+        if pip_already_installed:
+            for name in pip_already_installed:
+                print(f"  {DIM}{name} (pip) - already installed{RESET}")
 
-        print(f"  {'Package':<{name_width}}   {'Required':<12} {'Installed':<12}")
-        print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12}")
+        if not to_clone and not pip_to_install:
+            print(f"\n{DIM}All dependencies are already installed.{RESET}")
+            return True
 
-        has_updates = False
-        for dep_name, dep_info in sorted(dependencies.items()):
-            min_ver = dep_info.get('min_version', dep_info.get('version', '?'))
-            installed_ver = installed.get(dep_name)
+        if to_clone:
+            print(f"\n  {CYAN}Commands:{RESET}")
+            for dep_name, url in to_clone:
+                clone_target = os.path.join(talon_user_dir, repo_name_from_url(url))
+                print(f"    git clone {url} \"{clone_target}\"")
 
-            if installed_ver is None:
-                status = f"{RED}not found{RESET}"
-            elif installed_ver == min_ver:
-                status = f"{GREEN}up to date{RESET}"
-            else:
-                installed_parts = [int(x) for x in installed_ver.split('.')]
-                required_parts = [int(x) for x in min_ver.split('.')]
-                if installed_parts > required_parts:
-                    status = f"{YELLOW}update available{RESET}"
-                    has_updates = True
+        if pip_to_install:
+            pip_path = find_talon_pip()
+            pip_display = pip_path or "pip"
+            print(f"    {pip_display} install {' '.join(pip_to_install)}")
+
+        if dry_run:
+            print(f"\n{DIM}(dry run - no actions taken){RESET}")
+            return True
+
+        if not confirm_action("\nProceed with installation?", auto_yes):
+            print(f"{DIM}Cancelled.{RESET}")
+            return True
+
+        # Clone repos
+        success = True
+        for dep_name, url in to_clone:
+            clone_target = os.path.join(talon_user_dir, repo_name_from_url(url))
+            print(f"\n  Cloning {dep_name}...")
+            try:
+                result = subprocess.run(
+                    ["git", "clone", url, clone_target],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    print(f"  {GREEN}Cloned {dep_name}{RESET}")
                 else:
-                    status = f"{GREEN}up to date{RESET}"
+                    print(f"  {RED}Failed to clone {dep_name}: {result.stderr.strip()}{RESET}")
+                    success = False
+            except Exception as e:
+                print(f"  {RED}Error cloning {dep_name}: {e}{RESET}")
+                success = False
 
-            installed_display = installed_ver or "—"
-            print(f"  {dep_name:<{name_width}}   >={min_ver:<11} {installed_display:<12} {status}")
+        # Pip install
+        if pip_to_install:
+            pip_path = find_talon_pip()
+            if not pip_path:
+                print(f"\n{YELLOW}Warning: Could not find Talon's bundled pip.{RESET}")
+                print(f"{DIM}Install manually with Talon's pip: pip install {' '.join(pip_to_install)}{RESET}")
+            else:
+                print(f"\n  Installing pip packages...")
+                try:
+                    result = subprocess.run(
+                        [pip_path, "install"] + pip_to_install,
+                        capture_output=True, text=True
+                    )
+                    if result.returncode == 0:
+                        print(f"  {GREEN}Installed pip packages{RESET}")
+                    else:
+                        print(f"  {RED}pip install failed: {result.stderr.strip()}{RESET}")
+                        success = False
+                except Exception as e:
+                    print(f"  {RED}Error running pip: {e}{RESET}")
+                    success = False
 
-        if not has_updates:
-            print(f"\n{DIM}All dependencies are up to date.{RESET}")
+        print()
+        return success
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+def install_from_url(url: str, dry_run: bool = False, auto_yes: bool = False) -> bool:
+    """Clone a package from a GitHub URL and install its dependencies."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    talon_user_dir = find_talon_user_dir()
+    if not talon_user_dir:
+        print(f"{RED}Error: Could not find Talon user directory{RESET}")
+        return False
+
+    repo_name = repo_name_from_url(url)
+    clone_target = os.path.join(talon_user_dir, repo_name)
+
+    if os.path.exists(clone_target):
+        print(f"{DIM}{repo_name} already exists at {clone_target}{RESET}")
+        manifest_path = Path(clone_target) / "manifest.json"
+        if manifest_path.exists():
+            return install_from_manifest(Path(clone_target), dry_run, auto_yes)
+        return True
+
+    installed = scan_installed_versions(talon_user_dir)
+
+    # Fetch manifest from GitHub to show full plan before cloning
+    remote_manifest = fetch_remote_manifest(url)
+
+    to_clone = [(repo_name, url)]
+    pip_to_install = []
+
+    if remote_manifest:
+        deps = remote_manifest.get('dependencies', {})
+        for dep_name, dep_info in sorted(deps.items()):
+            if dep_name in installed:
+                continue
+            github_url = dep_info.get('github', '')
+            if github_url:
+                dep_repo = repo_name_from_url(github_url)
+                dep_target = os.path.join(talon_user_dir, dep_repo)
+                if not os.path.exists(dep_target):
+                    to_clone.append((dep_name, github_url))
+
+        pip_deps = remote_manifest.get('pipDependencies', {})
+        if pip_deps:
+            pip_path = find_talon_pip()
+            installed_pip = get_installed_pip_packages(pip_path) if pip_path else set()
+            for pip_name, pip_info in sorted(pip_deps.items()):
+                if pip_name.lower() in installed_pip:
+                    continue
+                version = pip_info.get('version', '')
+                if version and version != '*':
+                    pip_to_install.append(f"{pip_name}{version}")
+                else:
+                    pip_to_install.append(pip_name)
+
+    # Show plan
+    print(f"\n{CYAN}Commands:{RESET}")
+    for dep_name, dep_url in to_clone:
+        target = os.path.join(talon_user_dir, repo_name_from_url(dep_url))
+        print(f"  git clone {dep_url} \"{target}\"")
+
+    if pip_to_install:
+        pip_path = find_talon_pip()
+        pip_display = pip_path or "pip"
+        print(f"  {pip_display} install {' '.join(pip_to_install)}")
+
+    if dry_run:
+        print(f"\n{DIM}(dry run - no actions taken){RESET}")
+        return True
+
+    if not confirm_action("\nProceed with installation?", auto_yes):
+        print(f"{DIM}Cancelled.{RESET}")
+        return True
+
+    # Clone all repos
+    success = True
+    for dep_name, dep_url in to_clone:
+        target = os.path.join(talon_user_dir, repo_name_from_url(dep_url))
+        print(f"\n  Cloning {dep_name}...")
+        try:
+            result = subprocess.run(
+                ["git", "clone", dep_url, target],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"  {GREEN}Cloned {dep_name}{RESET}")
+            else:
+                print(f"  {RED}Failed to clone {dep_name}: {result.stderr.strip()}{RESET}")
+                success = False
+        except Exception as e:
+            print(f"  {RED}Error cloning {dep_name}: {e}{RESET}")
+            success = False
+
+    # Pip install
+    if pip_to_install:
+        pip_path = find_talon_pip()
+        if not pip_path:
+            print(f"\n{YELLOW}Warning: Could not find Talon's bundled pip.{RESET}")
+            print(f"{DIM}Install manually with Talon's pip: pip install {' '.join(pip_to_install)}{RESET}")
+        else:
+            print(f"\n  Installing pip packages...")
+            try:
+                result = subprocess.run(
+                    [pip_path, "install"] + pip_to_install,
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    print(f"  {GREEN}Installed pip packages{RESET}")
+                else:
+                    print(f"  {RED}pip install failed: {result.stderr.strip()}{RESET}")
+                    success = False
+            except Exception as e:
+                print(f"  {RED}Error running pip: {e}{RESET}")
+                success = False
+
+    print()
+    return success
+
+
+def consumer_update_command(directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+    """Pull latest for the current package and its installed dependencies."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+
+        pkg_name = manifest.get('name', directory.name)
+        dependencies = manifest.get('dependencies', {})
+
+        # Build list of repos to pull: self + dependencies
+        to_update = []
+        not_found = []
+
+        # Include self if it's a git repo
+        git_dir = directory / ".git"
+        if git_dir.exists():
+            to_update.append((pkg_name, str(directory)))
+
+        if dependencies:
+            talon_user_dir = find_talon_user_dir()
+            if not talon_user_dir:
+                print(f"{RED}Error: Could not find Talon user directory{RESET}")
+                return False
+
+            installed = scan_installed_versions(talon_user_dir)
+
+            for dep_name in sorted(dependencies.keys()):
+                installed_info = installed.get(dep_name)
+                if installed_info:
+                    to_update.append((dep_name, installed_info["path"]))
+                else:
+                    not_found.append(dep_name)
+
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+
+        if not_found:
+            for name in not_found:
+                print(f"  {YELLOW}{name} - not installed, skipping{RESET}")
+
+        if not to_update:
+            print(f"\n{DIM}Nothing to update.{RESET}")
+            return True
+
+        print(f"\n  {CYAN}Commands:{RESET}")
+        for dep_name, path in to_update:
+            print(f"    git -C \"{path}\" pull")
+
+        if dry_run:
+            print(f"\n{DIM}(dry run - no actions taken){RESET}")
+            return True
+
+        if not confirm_action("\nProceed with update?", auto_yes):
+            print(f"{DIM}Cancelled.{RESET}")
+            return True
+
+        # Git pull each
+        for dep_name, path in to_update:
+            print(f"\n  Updating {dep_name}...")
+            try:
+                result = subprocess.run(
+                    ["git", "pull"],
+                    cwd=path,
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    output = result.stdout.strip()
+                    if "Already up to date" in output or "Already up-to-date" in output:
+                        print(f"  {DIM}{dep_name} - already up to date{RESET}")
+                    else:
+                        print(f"  {GREEN}{dep_name} - updated{RESET}")
+                else:
+                    print(f"  {RED}{dep_name} - failed: {result.stderr.strip()}{RESET}")
+            except Exception as e:
+                print(f"  {RED}{dep_name} - error: {e}{RESET}")
 
         print()
         return True
@@ -400,7 +894,7 @@ def outdated_command(directory: Path) -> bool:
         return False
 
 
-def update_command(dep_name: str | None, directory: Path, dry_run: bool = False) -> bool:
+def sync_command(dep_name: str | None, directory: Path, dry_run: bool = False) -> bool:
     """Update dependency min_version(s) to match installed versions."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
 
@@ -437,7 +931,8 @@ def update_command(dep_name: str | None, directory: Path, dry_run: bool = False)
         for name in deps_to_update:
             dep_info = dependencies[name]
             min_ver = dep_info.get('min_version', dep_info.get('version'))
-            installed_ver = installed.get(name)
+            installed_info = installed.get(name)
+            installed_ver = installed_info["version"] if installed_info else None
 
             if installed_ver is None:
                 print(f"{YELLOW}{name}: not found locally, skipping{RESET}")
@@ -647,7 +1142,7 @@ def pip_command(action: str, package_spec: str | None, directory: Path, dry_run:
                 if version and version != '*':
                     parts.append(f" ({version})")
                 if required_by:
-                    parts.append(f" {DIM}— required by {', '.join(required_by)}{RESET}")
+                    parts.append(f" {DIM}- required by {', '.join(required_by)}{RESET}")
                 print("".join(parts))
 
             return True
@@ -863,14 +1358,31 @@ def main():
         success = version_command(bump_type, directory, dry_run)
         sys.exit(0 if success else 1)
 
+    # tpack install [dir] or tpack install <github_url>
+    if len(args) >= 1 and args[0] == 'install':
+        dry_run = "--dry-run" in sys.argv
+        auto_yes = "--yes" in sys.argv or "-y" in sys.argv
+        target = args[1] if len(args) >= 2 else None
+        directory = Path(".").resolve()
+        success = install_command(target, directory, dry_run, auto_yes)
+        sys.exit(0 if success else 1)
+
+    # tpack update [directory]
+    if len(args) >= 1 and args[0] == 'update':
+        dry_run = "--dry-run" in sys.argv
+        auto_yes = "--yes" in sys.argv or "-y" in sys.argv
+        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+        success = consumer_update_command(directory, dry_run, auto_yes)
+        sys.exit(0 if success else 1)
+
     # tpack outdated [directory]
     if len(args) >= 1 and args[0] == 'outdated':
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
         success = outdated_command(directory)
         sys.exit(0 if success else 1)
 
-    # tpack update [dep_name] [directory]
-    if len(args) >= 1 and args[0] == 'update':
+    # tpack sync [dep_name] [directory]
+    if len(args) >= 1 and args[0] == 'sync':
         dry_run = "--dry-run" in sys.argv
         dep_name = None
         directory = Path(".").resolve()
@@ -884,7 +1396,7 @@ def main():
                 dep_name = args[1]
                 if len(args) >= 3:
                     directory = Path(args[2]).resolve()
-        success = update_command(dep_name, directory, dry_run)
+        success = sync_command(dep_name, directory, dry_run)
         sys.exit(0 if success else 1)
 
     # tpack pip <package> [directory]

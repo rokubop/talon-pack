@@ -106,7 +106,7 @@ def generate_installation_markdown(manifest: dict) -> str:
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
                 github = dep_info.get('github', '')
                 required_by = dep_info.get('required_by', [])
-                suffix = f" — required by {', '.join(required_by)}"
+                suffix = f" - required by {', '.join(required_by)}"
                 if github:
                     lines.append(f"- [**{dep_name}**]({github}) (v{version}+){suffix}")
                 else:
@@ -128,7 +128,7 @@ def generate_installation_markdown(manifest: dict) -> str:
                 version = pip_info.get('version', '')
                 suffix = f" ({version})" if version and version != '*' else ""
                 pypi_url = f"https://pypi.org/project/{pip_name}/"
-                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) — required by {', '.join(required_by)}")
+                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) - required by {', '.join(required_by)}")
 
     # Determine number of install steps
     has_pip_step = has_pip
@@ -203,7 +203,7 @@ def generate_installation_markdown(manifest: dict) -> str:
 
     lines.append("```")
 
-    # Dev dependencies section (at the bottom — these are optional)
+    # Dev dependencies section (at the bottom - these are optional)
     if dev_dependencies:
         lines.append("\n### Development Dependencies")
         lines.append("\nOptional dependencies for development and testing:")
