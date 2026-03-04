@@ -3,6 +3,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 import json
 import os
+from pathlib import Path
 import re
 import sys
 
@@ -1124,7 +1125,7 @@ def prune_manifest_data(manifest_data):
             del manifest_data[field]
 
     # Prune empty dicts
-    for field in ['pipDependencies']:
+    for field in ['pipDependencies', 'bundledDependencies']:
         if field in manifest_data and isinstance(manifest_data[field], dict) and len(manifest_data[field]) == 0:
             del manifest_data[field]
 
@@ -1393,6 +1394,31 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                     dev_deps_found.append(pkg_name)
                     package_dependencies.pop(pkg_name, None)
 
+            # Auto-detect bundled dependencies from nested manifest.json files
+            bundled_dependencies = {}
+            for nested_manifest_path in sorted(Path(full_package_dir).rglob("manifest.json")):
+                if nested_manifest_path == Path(full_package_dir) / "manifest.json":
+                    continue  # Skip the package's own manifest
+                try:
+                    with open(nested_manifest_path, 'r', encoding='utf-8') as f:
+                        nested_manifest = json.load(f)
+                    nested_name = nested_manifest.get('name', '')
+                    if nested_name and nested_manifest.get('namespace'):
+                        bundled_dependencies[nested_name] = {
+                            "version": nested_manifest.get('version', '0.0.0'),
+                            "namespace": nested_manifest.get('namespace', ''),
+                            "github": nested_manifest.get('github', ''),
+                        }
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            # Remove bundled dependencies from auto-generated dependencies
+            bundled_deps_found = []
+            for pkg_name in bundled_dependencies:
+                if pkg_name in package_dependencies:
+                    bundled_deps_found.append(pkg_name)
+                    package_dependencies.pop(pkg_name, None)
+
             # Count contributes and depends
             contributes_count = sum(len(getattr(new_entity_data.contributes, key)) for key in ENTITIES)
             depends_count = sum(len(getattr(new_entity_data.depends, key)) for key in ENTITIES)
@@ -1431,6 +1457,13 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                         dev_dep_info = existing_dev_deps[pkg_name]
                         version = dev_dep_info.get('min_version', 'unknown') if isinstance(dev_dep_info, dict) else dev_dep_info
                         print(f"  - {pkg_name} ({version}) [devDependency]")
+                    print()
+                elif bundled_deps_found:
+                    print(f"Package dependencies (covered by bundledDependencies):")
+                    for pkg_name in bundled_deps_found:
+                        bundled_dep_info = existing_bundled_deps[pkg_name]
+                        version = bundled_dep_info.get('version', 'unknown') if isinstance(bundled_dep_info, dict) else bundled_dep_info
+                        print(f"  - {pkg_name} ({version}) [bundled]")
                     print()
                 else:
                     print(f"No package dependencies\n")
@@ -1567,6 +1600,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                 "requires": sorted(list(requires_set)),
                 "dependencies": package_dependencies,
                 "devDependencies": existing_manifest_data.get("devDependencies", {}),
+                "bundledDependencies": bundled_dependencies,
                 "pipDependencies": pip_dependencies,
                 "contributes": vars(new_entity_data.contributes),
                 "depends": filtered_depends_dict,

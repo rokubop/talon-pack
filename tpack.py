@@ -23,19 +23,16 @@ Usage:
     version                        Generate _version.py
     readme                         Generate README.md
     shields                        Generate shield badges
-    duplicate-check                Generate _duplicate_check.py (for subtree-bundled packages)
+    duplicate-check                Generate _duplicate_check.py
+    install-block                  Generate install block (outputs to console)
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
-  tpack --manifest-only          Only run manifest generator
-  tpack --version-only           Only run version generator
-  tpack --readme-only            Only run readme generator
-  tpack --shields-only           Only run shields generator
-  tpack --install-block-only     Only run install block generator (outputs to console)
   tpack --no-manifest            Skip manifest generator
   tpack --no-version             Skip version generator
   tpack --no-readme              Skip readme generator
   tpack --no-shields             Skip shields generator
+  tpack --no-duplicate-check     Skip duplicate check generator
   tpack --help                   Show this help message
 
 Config:
@@ -284,8 +281,19 @@ def info_command(directory: Path) -> bool:
                 if dep_github:
                     print(f"    {DIM}{dep_github}{RESET}")
 
+        # Bundled Dependencies
+        bundled_dependencies = manifest.get('bundledDependencies', {})
+        if bundled_dependencies:
+            print(f"\n{CYAN}Bundled Dependencies:{RESET}")
+            for dep_name, dep_info in sorted(bundled_dependencies.items()):
+                ver = dep_info.get('version', '?')
+                dep_github = dep_info.get('github', '')
+                print(f"  {dep_name} v{ver} (bundled)")
+                if dep_github:
+                    print(f"    {DIM}{dep_github}{RESET}")
+
         # Show message if nothing meaningful found
-        has_content = requires or contributes or depends or dependencies
+        has_content = requires or contributes or depends or dependencies or bundled_dependencies
         if not has_content:
             print(f"\n{DIM}No Talon contributions or dependencies detected.{RESET}")
 
@@ -1171,7 +1179,8 @@ def load_config() -> dict:
             "manifest": True,
             "version": True,
             "readme": True,
-            "shields": False
+            "shields": False,
+            "duplicateCheck": False
         }
     }
     if CONFIG_PATH.exists():
@@ -1219,7 +1228,7 @@ def run_generator(script_name: str, directory: str, extra_args: list = None) -> 
 def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = False,
                       run_manifest: bool = True, run_version: bool = True,
                       run_readme: bool = True, run_shields: bool = False,
-                      run_install_block: bool = False, shields_only: bool = False) -> bool:
+                      run_duplicate_check: bool = False) -> bool:
     """Process a single directory with selected generators."""
     if not package_dir.exists():
         from diff_utils import RED, RESET
@@ -1229,10 +1238,7 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
     # Show package name header
     package_name = package_dir.name
     if verbose:
-        if run_install_block and not (run_manifest or run_version or run_readme or run_shields):
-            print(f"\nPackage: {package_dir}")
-        else:
-            print(f"\nGenerating files for: {package_dir}")
+        print(f"\nGenerating files for: {package_dir}")
         print("=" * 60)
     else:
         from diff_utils import CYAN, RESET
@@ -1279,11 +1285,10 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
             shields_args = []
             if dry_run:
                 shields_args.append("--dry-run")
-            if not shields_only:  # quiet when running as part of normal flow
-                shields_args.append("--quiet")
+            shields_args.append("--quiet")  # quiet when running as part of normal flow
             generators.append(("generate_shields.py", shields_args if shields_args else None))
-        if run_install_block:
-            generators.append(("generate_install_block.py", None))
+        if run_duplicate_check:
+            generators.append(("generate_duplicate_check.py", other_args if other_args else None))
 
         if not generators:
             print("No generators selected to run.")
@@ -1298,7 +1303,7 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
                 print(f"{RED}Failed at {generator}{RESET}")
                 return False
 
-        if verbose and not (run_install_block and not (run_manifest or run_version or run_readme or run_shields)):
+        if verbose:
             print(f"\nAll generators completed for {package_dir}")
         return True
     finally:
@@ -1432,7 +1437,7 @@ def main():
     if len(args) >= 1 and args[0] == 'generate':
         if len(args) < 2:
             print("Usage: tpack generate <type> [directory]")
-            print("Types: manifest, version, readme, shields, duplicate-check")
+            print("Types: manifest, version, readme, shields, duplicate-check, install-block")
             sys.exit(1)
         gen_type = args[1]
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
@@ -1445,6 +1450,7 @@ def main():
             "readme": "generate_readme.py",
             "shields": "generate_shields.py",
             "duplicate-check": "generate_duplicate_check.py",
+            "install-block": "generate_install_block.py",
         }
 
         if gen_type not in gen_map:
@@ -1476,19 +1482,14 @@ def main():
     no_version = "--no-version" in sys.argv
     no_readme = "--no-readme" in sys.argv
     no_shields = "--no-shields" in sys.argv
-    manifest_only = "--manifest-only" in sys.argv
-    version_only = "--version-only" in sys.argv
-    readme_only = "--readme-only" in sys.argv
-    shields_only = "--shields-only" in sys.argv
-    install_block_only = "--install-block-only" in sys.argv
+    no_duplicate_check = "--no-duplicate-check" in sys.argv
 
-    # Determine which generators to run (config defaults, overridden by flags)
-    only_mode = manifest_only or version_only or readme_only or shields_only or install_block_only
-    run_manifest = manifest_only if only_mode else (cfg_defaults.get("manifest", True) and not no_manifest)
-    run_version = version_only if only_mode else (cfg_defaults.get("version", True) and not no_version)
-    run_readme = readme_only if only_mode else (cfg_defaults.get("readme", True) and not no_readme)
-    run_shields = shields_only if only_mode else (cfg_defaults.get("shields", False) and not no_shields)
-    run_install_block = install_block_only if only_mode else False
+    # Determine which generators to run (config defaults, overridden by --no-* flags)
+    run_manifest = cfg_defaults.get("manifest", True) and not no_manifest
+    run_version = cfg_defaults.get("version", True) and not no_version
+    run_readme = cfg_defaults.get("readme", True) and not no_readme
+    run_shields = cfg_defaults.get("shields", False) and not no_shields
+    run_duplicate_check = cfg_defaults.get("duplicateCheck", False) and not no_duplicate_check
 
     # Get directories from arguments or use current directory
     package_dirs = [Path(d).resolve() for d in sys.argv[1:] if not d.startswith('-')]
@@ -1502,28 +1503,26 @@ def main():
     total_count = len(package_dirs)
 
     for package_dir in package_dirs:
-        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields, run_install_block, shields_only):
+        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields, run_duplicate_check):
             success_count += 1
 
-    # Skip noisy success messages for simple output modes
-    if not install_block_only:
-        from diff_utils import GREEN, DIM, RESET
-        dry_run_note = f" {DIM}(dry run - no files modified){RESET}" if dry_run else ""
-        if verbose:
-            print("\n" + "=" * 60)
-            if success_count == total_count:
-                if total_count == 1:
-                    print(f"{GREEN}SUCCESS: All generators completed successfully!{RESET}{dry_run_note}")
-                else:
-                    print(f"{GREEN}SUCCESS: All {total_count} directories processed successfully!{RESET}{dry_run_note}")
+    from diff_utils import GREEN, DIM, RESET
+    dry_run_note = f" {DIM}(dry run - no files modified){RESET}" if dry_run else ""
+    if verbose:
+        print("\n" + "=" * 60)
+        if success_count == total_count:
+            if total_count == 1:
+                print(f"{GREEN}SUCCESS: All generators completed successfully!{RESET}{dry_run_note}")
             else:
-                print(f"Processed {success_count}/{total_count} directories successfully{dry_run_note}")
+                print(f"{GREEN}SUCCESS: All {total_count} directories processed successfully!{RESET}{dry_run_note}")
         else:
-            # Non-verbose: simple completion message
-            if dry_run:
-                print(f"\n{DIM}Done. (dry run - no files modified){RESET}")
-            else:
-                print(f"\n{DIM}Done.{RESET}")
+            print(f"Processed {success_count}/{total_count} directories successfully{dry_run_note}")
+    else:
+        # Non-verbose: simple completion message
+        if dry_run:
+            print(f"\n{DIM}Done. (dry run - no files modified){RESET}")
+        else:
+            print(f"\n{DIM}Done.{RESET}")
 
 
 if __name__ == "__main__":

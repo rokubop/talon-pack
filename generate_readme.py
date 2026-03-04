@@ -70,7 +70,8 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
 
     dependencies = manifest.get("dependencies", {})
     dev_dependencies = manifest.get("devDependencies", {})
-    all_deps = {**dependencies, **dev_dependencies}
+    bundled_dependencies = manifest.get("bundledDependencies", {})
+    all_deps = {**dependencies, **dev_dependencies, **bundled_dependencies}
 
     for dep_name, dep_info in all_deps.items():
         version = dep_info.get("min_version") or dep_info.get("version", "")
@@ -110,7 +111,7 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
             if not github_mentioned and not name_mentioned:
                 warnings.append(
                     f"{dep_name} not mentioned in README. "
-                    f"Run `tpack --install-block-only` to see the install block"
+                    f"Run `tpack generate install-block` to see the install block"
                 )
 
     return content, actions, warnings
@@ -201,7 +202,7 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
         pip_names = ", ".join(sorted(pip_deps.keys()))
         dep_warnings.append(
             f"pip dependencies ({pip_names}) not mentioned in README. "
-            f"Run `tpack --install-block-only` to see the pip install block"
+            f"Run `tpack generate install-block` to see the pip install block"
         )
 
     return content, actions, dep_warnings
