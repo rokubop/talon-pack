@@ -18,6 +18,12 @@ Usage:
   tpack pip <pkg> [dir]            Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
+  tpack generate <type> [dir]      Generate a specific file
+    manifest                       Generate manifest.json
+    version                        Generate _version.py
+    readme                         Generate README.md
+    shields                        Generate shield badges
+    duplicate-check                Generate _duplicate_check.py (for subtree-bundled packages)
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
@@ -1420,6 +1426,43 @@ def main():
             print("       tpack pip remove <package>   Remove pip dependency")
             print("       tpack pip list               List pip dependencies")
             sys.exit(1)
+        sys.exit(0 if success else 1)
+
+    # tpack generate <type> [directory]
+    if len(args) >= 1 and args[0] == 'generate':
+        if len(args) < 2:
+            print("Usage: tpack generate <type> [directory]")
+            print("Types: manifest, version, readme, shields, duplicate-check")
+            sys.exit(1)
+        gen_type = args[1]
+        directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+        dry_run = "--dry-run" in sys.argv
+        verbose = "--verbose" in sys.argv or "-v" in sys.argv
+
+        gen_map = {
+            "manifest": "generate_manifest.py",
+            "version": "generate_version.py",
+            "readme": "generate_readme.py",
+            "shields": "generate_shields.py",
+            "duplicate-check": "generate_duplicate_check.py",
+        }
+
+        if gen_type not in gen_map:
+            from diff_utils import RED, RESET
+            print(f"{RED}Unknown generator: {gen_type}{RESET}")
+            print(f"Available: {', '.join(gen_map.keys())}")
+            sys.exit(1)
+
+        from diff_utils import CYAN, RESET
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+
+        extra_args = []
+        if dry_run:
+            extra_args.append("--dry-run")
+        if verbose:
+            extra_args.append("--verbose")
+
+        success = run_generator(gen_map[gen_type], str(directory), extra_args if extra_args else None)
         sys.exit(0 if success else 1)
 
     # Load config
