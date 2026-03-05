@@ -370,19 +370,9 @@ def outdated_command(directory: Path) -> bool:
         github_url = manifest.get('github', '')
         dependencies = manifest.get('dependencies', {})
 
-        # Build list of packages to check: self + dependencies
-        packages_to_check = {}
-
-        # Include the current package itself
         pkg_name = manifest.get('name', directory.name)
-        packages_to_check[pkg_name] = {
-            "local_version": local_version,
-            "github": github_url,
-            "is_self": True,
-        }
 
-        # Include dependencies
-        talon_user_dir = None
+        # Scan installed versions for dependencies
         installed = {}
         if dependencies:
             talon_user_dir = find_talon_user_dir()
@@ -391,55 +381,79 @@ def outdated_command(directory: Path) -> bool:
                 return False
             installed = scan_installed_versions(talon_user_dir)
 
+        # Build dependency list
+        deps_to_check = {}
         for dep_name, dep_info in dependencies.items():
             installed_info = installed.get(dep_name)
-            packages_to_check[dep_name] = {
-                "local_version": installed_info["version"] if installed_info else None,
+            deps_to_check[dep_name] = {
+                "manifest_version": dep_info.get('min_version'),
+                "installed_version": installed_info["version"] if installed_info else None,
                 "github": dep_info.get('github', ''),
-                "is_self": False,
             }
 
-        # Fetch remote versions
+        # Fetch remote versions (self + deps)
         print(f"\n{CYAN}{directory.name}/{RESET}")
         print(f"{DIM}  Checking remote versions...{RESET}")
 
         remote_versions = {}
-        for name, info in packages_to_check.items():
+        if github_url:
+            remote_manifest = fetch_remote_manifest(github_url)
+            if remote_manifest:
+                remote_versions[pkg_name] = remote_manifest.get('version')
+        for name, info in deps_to_check.items():
             pkg_github = info["github"]
             if pkg_github:
                 remote_manifest = fetch_remote_manifest(pkg_github)
                 if remote_manifest:
                     remote_versions[name] = remote_manifest.get('version')
 
-        # Calculate column widths
-        name_width = max(len(name) for name in packages_to_check)
-        name_width = max(name_width, len("Package"))
+        # Show self package status
+        self_remote = remote_versions.get(pkg_name)
+        if self_remote and self_remote != local_version:
+            remote_parts = [int(x) for x in self_remote.split('.')]
+            local_parts = [int(x) for x in local_version.split('.')]
+            if remote_parts > local_parts:
+                self_status = f"{YELLOW}update available{RESET}"
+            else:
+                self_status = f"{GREEN}up to date{RESET}"
+        else:
+            self_status = f"{GREEN}up to date{RESET}"
+        print(f"  {pkg_name}  {local_version} (local)  {self_remote or '-'} (remote)  {self_status}")
 
-        print(f"  {'Package':<{name_width}}   {'Local':<12} {'Remote':<12} {'Status'}")
-        print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12} {'-' * 16}")
+        has_updates = self_remote and self_remote != local_version and [int(x) for x in self_remote.split('.')] > [int(x) for x in local_version.split('.')]
 
-        has_updates = False
-        for name, info in sorted(packages_to_check.items()):
-            local_ver = info["local_version"]
-            remote_ver = remote_versions.get(name)
+        # Show dependencies table
+        if deps_to_check:
+            name_width = max(len(name) for name in deps_to_check)
+            name_width = max(name_width, len("Dependency"))
 
-            if local_ver is None:
-                status = f"{RED}not installed{RESET}"
-                has_updates = True
-            elif remote_ver and remote_ver != local_ver:
-                remote_parts = [int(x) for x in remote_ver.split('.')]
-                local_parts = [int(x) for x in local_ver.split('.')]
-                if remote_parts > local_parts:
-                    status = f"{YELLOW}update available{RESET}"
+            print(f"\n  {'Dependency':<{name_width}}   {'Manifest':<12} {'Local':<12} {'Remote':<12} {'Status'}")
+            print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12} {'-' * 12} {'-' * 16}")
+
+            for name, info in sorted(deps_to_check.items()):
+                manifest_ver = info["manifest_version"]
+                installed_ver = info.get("installed_version")
+                remote_ver = remote_versions.get(name)
+                compare_ver = manifest_ver or installed_ver
+
+                if compare_ver is None:
+                    status = f"{RED}not installed{RESET}"
                     has_updates = True
+                elif remote_ver and remote_ver != compare_ver:
+                    remote_parts = [int(x) for x in remote_ver.split('.')]
+                    compare_parts = [int(x) for x in compare_ver.split('.')]
+                    if remote_parts > compare_parts:
+                        status = f"{YELLOW}update available{RESET}"
+                        has_updates = True
+                    else:
+                        status = f"{GREEN}up to date{RESET}"
                 else:
                     status = f"{GREEN}up to date{RESET}"
-            else:
-                status = f"{GREEN}up to date{RESET}"
 
-            local_display = local_ver or "-"
-            remote_display = remote_ver or "-"
-            print(f"  {name:<{name_width}}   {local_display:<12} {remote_display:<12} {status}")
+                manifest_display = manifest_ver or "-"
+                installed_display = installed_ver or "-"
+                remote_display = remote_ver or "-"
+                print(f"  {name:<{name_width}}   {manifest_display:<12} {installed_display:<12} {remote_display:<12} {status}")
 
         if not has_updates:
             print(f"\n{DIM}All packages are up to date.{RESET}")
