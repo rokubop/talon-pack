@@ -9,31 +9,55 @@ _script_dir = str(Path(__file__).parent.resolve())
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
+def _pip_spec(pip_name: str, pip_info: dict) -> str:
+    """Build a single pip install spec string."""
+    version = pip_info.get('version', '')
+    if version and version != '*':
+        return f"{pip_name}{version}"
+    return pip_name
+
+
+def _pip_install_block(pip_specs: list[str]) -> list[str]:
+    """Generate platform-specific pip install lines for given specs."""
+    all_specs = " ".join(pip_specs)
+    return [
+        "```sh",
+        "# Windows",
+        f"~/AppData/Roaming/talon/venv/[VERSION]/Scripts/pip.bat install {all_specs}",
+        "",
+        "# Linux/Mac",
+        f"~/.talon/bin/pip install {all_specs}",
+        "```",
+    ]
+
+
 def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
     """Generate the pip install command block. Returns None if no pip deps."""
     if not pip_dependencies:
         return None
 
-    lines = []
-    lines.append("Install using Talon's bundled pip:")
-    lines.append("")
+    required = {k: v for k, v in pip_dependencies.items() if not v.get('optional')}
+    optional = {k: v for k, v in pip_dependencies.items() if v.get('optional')}
 
-    # Build install specs (include version constraint if specified)
-    pip_specs = []
-    for pip_name, pip_info in pip_dependencies.items():
-        version = pip_info.get('version', '')
-        if version and version != '*':
-            pip_specs.append(f"{pip_name}{version}")
-        else:
-            pip_specs.append(pip_name)
-    all_pip_specs = " ".join(pip_specs)
-    lines.append("```sh")
-    lines.append("# Windows")
-    lines.append(f"~/AppData/Roaming/talon/venv/[VERSION]/Scripts/pip.bat install {all_pip_specs}")
-    lines.append("")
-    lines.append("# Linux/Mac")
-    lines.append(f"~/.talon/bin/pip install {all_pip_specs}")
-    lines.append("```")
+    lines = []
+
+    if required:
+        lines.append("Install using Talon's bundled pip:")
+        lines.append("")
+        lines.extend(_pip_install_block([_pip_spec(k, v) for k, v in required.items()]))
+
+    if optional:
+        if required:
+            lines.append("")
+        for pip_name, pip_info in optional.items():
+            description = pip_info.get('description', '')
+            desc_suffix = f" — {description}" if description else ""
+            lines.append(f"**Optional**: `{pip_name}`{desc_suffix}")
+            lines.append("")
+            lines.extend(_pip_install_block([_pip_spec(pip_name, pip_info)]))
+
+    if not required and not optional:
+        return None
 
     return "\n".join(lines)
 
@@ -43,6 +67,7 @@ def generate_installation_markdown(manifest: dict) -> str:
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
     dev_dependencies = manifest.get('devDependencies', {})
+    bundled_dependencies = manifest.get('bundledDependencies', {})
     pip_dependencies = manifest.get('pipDependencies', {})
     requires = manifest.get('requires', [])
 
@@ -61,8 +86,9 @@ def generate_installation_markdown(manifest: dict) -> str:
     # Combine Requirements and Dependencies sections
     has_requirements = bool(requires)
     has_dependencies = bool(dependencies)
+    has_bundled = bool(bundled_dependencies)
     has_pip = bool(pip_dependencies)
-    has_any_deps = has_requirements or has_dependencies or has_pip
+    has_any_deps = has_requirements or has_dependencies or has_bundled or has_pip
 
     if has_any_deps:
         lines.append("\n### Dependencies")
@@ -106,11 +132,23 @@ def generate_installation_markdown(manifest: dict) -> str:
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
                 github = dep_info.get('github', '')
                 required_by = dep_info.get('required_by', [])
-                suffix = f" — required by {', '.join(required_by)}"
+                suffix = f" - required by {', '.join(required_by)}"
                 if github:
                     lines.append(f"- [**{dep_name}**]({github}) (v{version}+){suffix}")
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+){suffix}")
+
+        # Add bundled dependencies
+        if has_bundled:
+            bundled_names = []
+            for dep_name, dep_info in bundled_dependencies.items():
+                version = dep_info.get('version', 'unknown')
+                github = dep_info.get('github', '')
+                if github:
+                    bundled_names.append(f"[{dep_name}]({github}) v{version}")
+                else:
+                    bundled_names.append(f"{dep_name} v{version}")
+            lines.append(f"- **Bundled**: {', '.join(bundled_names)}")
 
         # Add pip dependencies to the listing
         if has_pip:
@@ -121,30 +159,35 @@ def generate_installation_markdown(manifest: dict) -> str:
                 version = pip_info.get('version', '')
                 suffix = f" ({version})" if version and version != '*' else ""
                 pypi_url = f"https://pypi.org/project/{pip_name}/"
-                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package)")
+                optional_label = " *(optional)*" if pip_info.get('optional') else ""
+                description = pip_info.get('description', '')
+                desc_suffix = f" - {description}" if description and pip_info.get('optional') else ""
+                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package){optional_label}{desc_suffix}")
 
             for pip_name, pip_info in transitive_pip.items():
                 required_by = pip_info.get('required_by', [])
                 version = pip_info.get('version', '')
                 suffix = f" ({version})" if version and version != '*' else ""
                 pypi_url = f"https://pypi.org/project/{pip_name}/"
-                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) — required by {', '.join(required_by)}")
+                lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) - required by {', '.join(required_by)}")
 
     # Determine number of install steps
     has_pip_step = has_pip
     has_clone_step = True  # Always have a clone step
-    use_numbered_steps = has_pip_step  # Number steps when there are 2+
+    all_pip_optional = has_pip and all(v.get('optional') for v in pip_dependencies.values())
+    use_numbered_steps = has_pip_step and not all_pip_optional  # Number steps when there are 2+ required
 
     step = 1
 
     # Step: Install Python packages (before cloning so code can load)
     if has_pip_step:
         pip_commands = generate_pip_install_commands(pip_dependencies)
+        pip_heading = "Install Python Packages (Optional)" if all_pip_optional else "Install Python Packages"
         if use_numbered_steps:
-            lines.append(f"\n### {step}. Install Python Packages")
+            lines.append(f"\n### {step}. {pip_heading}")
             step += 1
         else:
-            lines.append("\n### Install Python Packages")
+            lines.append(f"\n### {pip_heading}")
         lines.append(f"\n{pip_commands}")
 
     # Step: Clone repositories
@@ -203,7 +246,7 @@ def generate_installation_markdown(manifest: dict) -> str:
 
     lines.append("```")
 
-    # Dev dependencies section (at the bottom — these are optional)
+    # Dev dependencies section (at the bottom - these are optional)
     if dev_dependencies:
         lines.append("\n### Development Dependencies")
         lines.append("\nOptional dependencies for development and testing:")

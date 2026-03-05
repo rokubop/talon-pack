@@ -13,12 +13,31 @@ Catalogs your Talon repo's contributions and dependencies, generates version val
 ## Usage
 
 ```bash
-$ tpack [path]              # Create or update manifest, _version, and readme
-$ tpack --dry-run [path]    # Preview changes without writing files
-$ tpack info [path]         # Analyze any Talon folder for contributions and dependencies
-$ tpack version             # Show current package version
-$ tpack --version           # Show talon-pack CLI version
-$ tpack help                # Show all commands and options
+tpack [dir]                        # Generate/update manifest, _version, and readme
+tpack info [dir]                   # List contributions, dependencies, and info
+tpack patch [dir]                  # Bump patch version (1.0.0 -> 1.0.1)
+tpack minor [dir]                  # Bump minor version (1.0.0 -> 1.1.0)
+tpack major [dir]                  # Bump major version (1.0.0 -> 2.0.0)
+tpack install [dir]                # Install dependencies from manifest
+tpack install <github_url>         # Install a package (+ its dependencies)
+tpack update [dir]                 # Pull latest for all dependencies
+tpack outdated [dir]               # Check for newer versions (local vs remote)
+tpack sync [dep] [dir]             # Update dependency min_version to installed version
+tpack sync [dir]                   # Update all dependencies to installed versions
+tpack pip <pkg> [dir]              # Add pip dependency (e.g. vgamepad>=1.0.0)
+tpack pip remove <pkg> [dir]       # Remove pip dependency
+tpack pip list [dir]               # List pip dependencies
+tpack generate <type> [dir]        # Generate a specific file
+  manifest                         #   Generate manifest.json
+  version                          #   Generate _version.py
+  readme                           #   Generate README.md
+  shields                          #   Generate shield badges
+  duplicate-check                  #   Generate _duplicate_check.py
+  install-block                    #   Generate install block (outputs to console)
+tpack --dry-run                    # Preview changes without writing files
+tpack --yes, -y                    # Skip confirmation prompts
+tpack -v, --verbose                # Show detailed output (default: show only changes)
+tpack --help                       # Show all commands and options
 ```
 
 ## Getting Started
@@ -69,22 +88,86 @@ alias tpack="'/mnt/c/Program Files/Talon/python.exe' 'C:/Users/<YourUsername>/Ap
 function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\tpack.py" @args }
 ```
 
-**3. Reload your shell:**
+**3. (Optional) Add tab completion ([Zsh](#zsh-tab-completion) | [Bash](#bash-tab-completion)):**
 
-```bash
-source ~/.zshrc   # or ~/.bashrc
+#### Zsh tab completion
+Add to `~/.zshrc`:
+```zsh
+_tpack() {
+  local -a commands=(
+    'info' 'patch' 'minor' 'major' 'version'
+    'install' 'update' 'outdated' 'sync'
+    'pip' 'generate' 'help'
+  )
+  local -a generate_types=(
+    'manifest' 'version' 'readme' 'shields'
+    'duplicate-check' 'install-block'
+  )
+  local -a pip_cmds=('remove' 'list')
+  local -a flags=(
+    '--dry-run' '--yes' '-y' '-v' '--verbose'
+    '--no-manifest' '--no-version' '--no-readme'
+    '--no-shields' '--no-duplicate-check' '--help'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    _describe 'flag' flags
+  elif (( CURRENT == 3 )); then
+    case ${words[2]} in
+      generate) _describe 'type' generate_types ;;
+      pip) _describe 'pip command' pip_cmds ;;
+    esac
+  fi
+}
+compdef _tpack tpack
 ```
 
-For PowerShell, restart your terminal or run `. $PROFILE`.
+#### Bash tab completion
+Add to `~/.bashrc`:
+```bash
+_tpack() {
+  local cur prev commands generate_types pip_cmds flags
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  commands="info patch minor major version install update outdated sync pip generate help"
+  generate_types="manifest version readme shields duplicate-check install-block"
+  pip_cmds="remove list"
+  flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"
 
-**4. Try it out:**
+  if (( COMP_CWORD == 1 )); then
+    COMPREPLY=($(compgen -W "$commands $flags" -- "$cur"))
+  elif (( COMP_CWORD == 2 )); then
+    case "$prev" in
+      generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
+      pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
+    esac
+  fi
+}
+complete -F _tpack tpack
+```
+
+**4. Reload your shell:**
+
+```bash
+# Zsh
+source ~/.zshrc
+
+# Bash
+source ~/.bashrc
+
+# PowerShell - restart terminal or run:
+. $PROFILE
+```
+
+**5. Try it out:**
 
 ```bash
 tpack info some_folder       # See what a folder contributes
 tpack --dry-run some_folder  # Preview changes without writing
 ```
 
-**5. Run it on your repo:**
+**6. Run it on your repo:**
 
 ```bash
 tpack my_repo
@@ -103,7 +186,8 @@ Edit `tpack.config.json` in the talon-pack directory to change default behavior:
     "manifest": true,
     "version": true,
     "readme": true,
-    "shields": false
+    "shields": false,
+    "duplicateCheck": false
   }
 }
 ```
@@ -120,13 +204,13 @@ tpack major           # 1.0.0 -> 2.0.0
 
 ## Dependency Management
 
-Check if your local dependencies have newer versions than what's in your `manifest.json`, and update to match. Only compares against packages installed on your machine (does not check GitHub):
-
 ```bash
-tpack outdated                    # Show dependencies with available updates
-tpack update                      # Update all dependencies to installed versions
-tpack update talon-mouse-rig      # Update a specific dependency
-tpack update --dry-run             # Preview changes without writing
+tpack install                     # Install dependencies from manifest
+tpack install <github_url>        # Install a package (+ its dependencies)
+tpack update                      # Pull latest for all dependencies
+tpack outdated                    # Check for newer versions (local vs remote)
+tpack sync                        # Update all min_versions to installed versions
+tpack sync talon-mouse-rig        # Update a specific dependency's min_version
 ```
 
 ## Example `manifest.json`
@@ -379,24 +463,6 @@ app.register("ready", validate_dependencies)
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.
 
-## Individual Scripts
-
-Scripts can also be run individually if you only need a specific generator:
-
-| Script | Flag | Description |
-|--------|------|-------------|
-| `generate_manifest.py` | `--manifest-only` | Detects Talon entities, builds dependency map, creates/updates `manifest.json` |
-| `generate_version.py` | `--version-only` | Generates `_version.py` with version action and dependency validation |
-| `generate_readme.py` | `--readme-only` | Creates/updates `README.md` with badges and installation instructions |
-| `generate_shields.py` | `--shields-only` | Generates/updates shield badges in `README.md` |
-| `generate_install_block.py` | `--install-block-only` | Outputs formatted installation instructions |
-
-```bash
-tpack --manifest-only my_repo    # Run just the manifest generator
-python generate_manifest.py ../path-to-talon-repo  # Or run the script directly
-```
-
-All scripts support `--dry-run` to preview changes without writing files. You can also provide multiple folders: `tpack repo-1 repo-2`
 
 ## Troubleshooting
 
