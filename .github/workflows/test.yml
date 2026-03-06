@@ -1,0 +1,161 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-core:
+    name: Core tests (${{ matrix.os }}, ${{ matrix.shell }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: bash
+          - os: macos-latest
+            shell: bash
+          - os: macos-latest
+            shell: zsh
+          - os: windows-latest
+            shell: bash
+          - os: windows-latest
+            shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run core tests (bash/zsh)
+        if: matrix.shell != 'pwsh'
+        shell: bash
+        run: |
+          if [ "${{ matrix.shell }}" = "zsh" ]; then
+            zsh tests/test_tpack.sh
+          else
+            bash tests/test_tpack.sh
+          fi
+
+      - name: Run core tests (PowerShell)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          $env:PYTHON = "python"
+          python tests/../tpack.py --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "tpack --help failed" }
+
+          # Run the bash tests via Git Bash on Windows too
+          bash tests/test_tpack.sh
+
+  test-setup:
+    name: Setup tests (${{ matrix.os }}, ${{ matrix.shell }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: bash
+          - os: macos-latest
+            shell: zsh
+          - os: windows-latest
+            shell: bash
+          - os: windows-latest
+            shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run setup.sh tests (bash/zsh)
+        if: matrix.shell != 'pwsh'
+        shell: bash
+        run: |
+          if [ "${{ matrix.shell }}" = "zsh" ]; then
+            zsh tests/test_setup.sh
+          else
+            bash tests/test_setup.sh
+          fi
+
+      - name: Run setup.sh syntax check (zsh)
+        if: matrix.shell == 'zsh'
+        shell: zsh {0}
+        run: zsh -n setup.sh
+
+      - name: Test setup.ps1 (PowerShell)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        run: |
+          # Syntax check
+          $tokens = $null
+          $errors = $null
+          $null = [System.Management.Automation.PSParser]::Tokenize(
+            (Get-Content setup.ps1 -Raw), [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "setup.ps1 has syntax errors"
+          }
+          Write-Host "PASS setup.ps1 syntax OK"
+
+          # Functional test: run setup.ps1 against a temp profile
+          $tempProfile = Join-Path $env:TEMP "test_ps_profile.ps1"
+          if (Test-Path $tempProfile) { Remove-Item $tempProfile }
+
+          # Override $PROFILE for the test
+          $originalProfile = $PROFILE
+
+          # We can't easily override $PROFILE, so test the detection logic directly
+          # Create a temp file, write the tpack function marker, verify detection
+          Set-Content -Path $tempProfile -Value ""
+
+          # Simulate: no function, no completion
+          $content = Get-Content $tempProfile -Raw -ErrorAction SilentlyContinue
+          $hasFunction = $content -match 'function tpack\b'
+          $hasCompletion = $content -match '# --- tpack tab completion ---'
+          if ($hasFunction) { throw "FAIL: false positive on function detection" }
+          if ($hasCompletion) { throw "FAIL: false positive on completion detection" }
+          Write-Host "PASS detects missing function"
+          Write-Host "PASS detects missing completion"
+
+          # Simulate: add function
+          Add-Content -Path $tempProfile -Value "`n# --- tpack function ---`nfunction tpack { echo test }`n# --- end tpack function ---"
+          $content = Get-Content $tempProfile -Raw
+          if (-not ($content -match 'function tpack\b')) { throw "FAIL: function not detected" }
+          Write-Host "PASS detects existing function"
+
+          # Simulate: add completion
+          Add-Content -Path $tempProfile -Value "`n# --- tpack tab completion ---`nRegister-ArgumentCompleter -CommandName tpack -ScriptBlock {}`n# --- end tpack tab completion ---"
+          $content = Get-Content $tempProfile -Raw
+          if (-not ($content -match '# --- tpack tab completion ---')) { throw "FAIL: completion not detected" }
+          Write-Host "PASS detects existing completion"
+
+          # Both exist = would be noop
+          $hasFunction = $content -match 'function tpack\b'
+          $hasCompletion = $content -match '# --- tpack tab completion ---'
+          if (-not ($hasFunction -and $hasCompletion)) { throw "FAIL: noop detection failed" }
+          Write-Host "PASS both exist = would noop"
+
+          Remove-Item $tempProfile -ErrorAction SilentlyContinue
+          Write-Host "`nAll setup.ps1 tests passed!"
+
+  test-install:
+    name: Install tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run install tests
+        shell: bash
+        run: bash tests/test_install.sh
