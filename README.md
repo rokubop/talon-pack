@@ -1,12 +1,12 @@
 # Talon Pack
 
 ![Version](https://img.shields.io/badge/version-3.0.0-blue)
-![Status](https://img.shields.io/badge/status-stable-green)
+![Status](https://img.shields.io/badge/status-preview-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-green)
 
 ![Preview](preview.svg)
 
-Catalogs your Talon repo's contributions and dependencies, generates version validation, and updates your README with badges.
+CLI tool for Talon repos. Catalogs contributions and dependencies, manages versioning, and generates README badges.
 
 > **Note:** Unofficial community tool.
 
@@ -54,30 +54,28 @@ cd ~/AppData/Roaming/talon
 git clone https://github.com/rokubop/talon-pack
 ```
 
-**2. Run the setup script (Mac, Linux, WSL, Git Bash):**
+**2. Run the setup script:**
 
 Auto-detects your OS and shell, adds the `tpack` alias + tab completion to your shell config, and shows the diff of what changed. Safe to re-run (skips if already set up).
 
 ```bash
-bash ~/.talon/talon-pack/setup.sh       # mac/linux
-bash ~/AppData/Roaming/talon/talon-pack/setup.sh  # windows (WSL/Git Bash)
+# Mac / Linux
+bash ~/.talon/talon-pack/setup.sh
+
+# Windows (WSL / Git Bash)
+bash ~/AppData/Roaming/talon/talon-pack/setup.sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File "$env:APPDATA\talon\talon-pack\setup.ps1"
 ```
 
 Then reload your shell:
 ```bash
 source ~/.zshrc   # or ~/.bashrc
+. $PROFILE        # PowerShell
 ```
 
 Uses Talon's bundled Python, so no extra Python install needed.
-
-<details>
-<summary><strong>Windows (PowerShell)</strong></summary>
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "$env:APPDATA\talon\talon-pack\setup.ps1"
-```
-Then run `. $PROFILE` or restart your terminal.
-</details>
 
 **3. Try it out:**
 
@@ -89,7 +87,8 @@ tpack --dry-run some_folder  # Preview changes without writing
 **4. Run it on your repo:**
 
 ```bash
-tpack my_repo
+cd my_repo
+tpack
 ```
 
 🎉 Done! Keep your manifest up to date by running `tpack` whenever you make changes.

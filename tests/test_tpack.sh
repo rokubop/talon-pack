@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TPACK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-FIXTURE_DIR="$SCRIPT_DIR/fixtures/sample-package"
+# No static fixture files — generated at runtime to avoid Talon loading them
 if [[ -z "${PYTHON:-}" ]]; then
     if python3 --version &>/dev/null 2>&1; then PYTHON=python3
     elif python --version &>/dev/null 2>&1; then PYTHON=python
@@ -109,11 +109,33 @@ assert_output_contains() {
     fi
 }
 
-# Create a fresh working copy of the fixture
+# Create a fresh working dir with generated fixture files
 setup_workdir() {
     local workdir
     workdir="$(mktemp -d)"
-    cp -r "$FIXTURE_DIR/"* "$workdir/"
+
+    cat > "$workdir/sample.py" << 'PYEOF'
+from talon import Module, actions
+
+mod = Module()
+mod.setting("tpack_test_setting", type=str, default="hello", desc="A test setting")
+
+@mod.action_class
+class Actions:
+    def tpack_test_action():
+        """A test action"""
+        pass
+
+    def tpack_test_other_action(text: str) -> str:
+        """Another test action"""
+        return text
+PYEOF
+
+    cat > "$workdir/sample.talon" << 'TALONEOF'
+hello world: user.tpack_test_action()
+say <user.text>: user.tpack_test_other_action(text)
+TALONEOF
+
     echo "$workdir"
 }
 
@@ -161,8 +183,8 @@ assert_file_exists "manifest.json created" "$WORKDIR/manifest.json"
 assert_file_contains "manifest has name" "$WORKDIR/manifest.json" '"name"'
 assert_file_contains "manifest has version" "$WORKDIR/manifest.json" '"version"'
 assert_file_contains "manifest has contributes" "$WORKDIR/manifest.json" '"contributes"'
-assert_file_contains "manifest detects sample_action" "$WORKDIR/manifest.json" 'sample_action'
-assert_file_contains "manifest detects sample_setting" "$WORKDIR/manifest.json" 'sample_setting'
+assert_file_contains "manifest detects tpack_test_action" "$WORKDIR/manifest.json" 'tpack_test_action'
+assert_file_contains "manifest detects tpack_test_setting" "$WORKDIR/manifest.json" 'tpack_test_setting'
 assert_file_contains "manifest has _generator" "$WORKDIR/manifest.json" '"_generator": "talon-pack"'
 assert_file_exists "README.md created" "$WORKDIR/README.md"
 

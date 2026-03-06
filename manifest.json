@@ -1,7 +1,7 @@
 {
   "name": "talon-pack",
   "title": "Talon Pack",
-  "description": "Catalogs your Talon repo's contributions and dependencies, generates version validation, and updates your README with badges.",
+  "description": "CLI tool for Talon repos. Catalogs contributions and dependencies, manages versioning, and generates README badges.",
   "version": "3.0.0",
   "status": "preview",
   "namespace": "",
