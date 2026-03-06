@@ -12,7 +12,19 @@ if [[ -z "${PYTHON:-}" ]]; then
     elif python --version &>/dev/null 2>&1; then PYTHON=python
     else echo "Python not found"; exit 1; fi
 fi
-TPACK_SCRIPT="$TPACK_DIR/tpack.py"
+# Set up a fake talon directory so tpack's find_talon_user_dir works.
+# It walks up from SCRIPT_DIR looking for a parent named "talon" with user/ and talon.log.
+FAKE_ROOT="$(mktemp -d)"
+FAKE_TALON="$FAKE_ROOT/talon"
+mkdir -p "$FAKE_TALON/user"
+touch "$FAKE_TALON/talon.log"
+cp -r "$TPACK_DIR" "$FAKE_TALON/talon-pack"
+TPACK_SCRIPT="$FAKE_TALON/talon-pack/tpack.py"
+
+cleanup_talon() {
+    rm -rf "$FAKE_ROOT"
+}
+trap cleanup_talon EXIT
 
 # Colors
 GREEN='\033[0;32m'
