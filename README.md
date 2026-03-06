@@ -13,31 +13,31 @@ CLI tool for Talon repos. Catalogs contributions and dependencies, manages versi
 ## Usage
 
 ```bash
-tpack [dir]                  # Generate/update manifest, _version, and readme
-tpack info [dir]             # List contributions, dependencies, and info
-tpack patch [dir]            # Bump patch version (1.0.0 -> 1.0.1)
-tpack minor [dir]            # Bump minor version (1.0.0 -> 1.1.0)
-tpack major [dir]            # Bump major version (1.0.0 -> 2.0.0)
-tpack install [dir]          # Install dependencies from manifest
-tpack install <github_url>   # Install a package (+ its dependencies)
-tpack update [dir]           # Pull latest for all dependencies
-tpack outdated [dir]         # Check for newer versions (local vs remote)
-tpack sync [dep] [dir]       # Update dependency min_version to installed version
-tpack sync [dir]             # Update all dependencies to installed versions
-tpack pip <pkg> [dir]        # Add pip dependency (e.g. vgamepad>=1.0.0)
-tpack pip remove <pkg> [dir] # Remove pip dependency
-tpack pip list [dir]         # List pip dependencies
-tpack generate <type> [dir]  # Generate a specific file
-  manifest                   #   Generate manifest.json
-  version                    #   Generate _version.py
-  readme                     #   Generate README.md
-  shields                    #   Generate shield badges
-  duplicate-check            #   Generate _duplicate_check.py
-  install-block              #   Generate install block (outputs to console)
-tpack --dry-run              # Preview changes without writing files
-tpack --yes, -y              # Skip confirmation prompts
-tpack -v, --verbose          # Show detailed output (default: show only changes)
-tpack --help                 # Show all commands and options
+tpack [dir]                    # Generate/update manifest, _version, and readme
+tpack info [dir]               # List contributions, dependencies, and info
+tpack patch [dir]              # Bump patch version (1.0.0 -> 1.0.1)
+tpack minor [dir]              # Bump minor version (1.0.0 -> 1.1.0)
+tpack major [dir]              # Bump major version (1.0.0 -> 2.0.0)
+tpack install [dir]            # Install dependencies from manifest
+tpack install <github_url>     # Install a package (+ its dependencies)
+tpack update [dir]             # Pull latest for all dependencies
+tpack outdated [dir]           # Check for newer versions (local vs remote)
+tpack sync [dep] [dir]         # Update dependency min_version to installed version
+tpack sync [dir]               # Update all dependencies to installed versions
+tpack pip <pkg> [dir]          # Add pip dependency (e.g. vgamepad>=1.0.0)
+tpack pip remove <pkg> [dir]   # Remove pip dependency
+tpack pip list [dir]           # List pip dependencies
+tpack generate <type> [dir]    # Generate a specific file
+  manifest                     #   Generate manifest.json
+  version                      #   Generate _version.py
+  readme                       #   Generate README.md
+  shields                      #   Generate shield badges
+  duplicate-check              #   Generate _duplicate_check.py
+  install-block                #   Generate install block (outputs to console)
+tpack --dry-run                # Preview changes without writing files
+tpack --yes, -y                # Skip confirmation prompts
+tpack -v, --verbose            # Show detailed output (default: show only changes)
+tpack --help                   # Show all commands and options
 ```
 
 ## Getting Started
