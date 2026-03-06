@@ -54,120 +54,39 @@ cd ~/AppData/Roaming/talon
 git clone https://github.com/rokubop/talon-pack
 ```
 
-**2. Set up an alias (pick one):**
+**2. Run the setup script (Mac, Linux, WSL, Git Bash):**
 
-Open your shell config file and add the alias below. Not sure which file? Run `echo $SHELL` - if it says `zsh`, use `~/.zshrc`; if `bash`, use `~/.bashrc`. To open it:
+Auto-detects your OS and shell, adds the `tpack` alias + tab completion to your shell config, and shows the diff of what changed. Safe to re-run (skips if already set up).
 
 ```bash
-code ~/.zshrc  # or ~/.bashrc - use vim, notepad, open, or any editor
+bash ~/.talon/talon-pack/setup.sh       # mac/linux
+bash ~/AppData/Roaming/talon/talon-pack/setup.sh  # windows (WSL/Git Bash)
 ```
-Uses Talon's bundled Python 3.13, so no extra Python install needed.
 
-**Mac (Zsh)** - add to `~/.zshrc`:
+Then reload your shell:
 ```bash
-alias tpack="/Applications/Talon.app/Contents/Resources/python/bin/python3 ~/.talon/talon-pack/tpack.py"
+source ~/.zshrc   # or ~/.bashrc
 ```
 
-**Linux (Bash)** - add to `~/.bashrc`:
-```bash
-alias tpack="~/.talon/bin/python3 ~/.talon/talon-pack/tpack.py"
-```
+Uses Talon's bundled Python, so no extra Python install needed.
 
-**Windows (Git Bash)** - add to `~/.bashrc`:
-```bash
-alias tpack="'/c/Program Files/Talon/python.exe' ~/AppData/Roaming/talon/talon-pack/tpack.py"
-```
+<details>
+<summary><strong>Windows (PowerShell)</strong></summary>
 
-**Windows (WSL)** - add to `~/.bashrc`, replace `<YourUsername>` with your Windows username:
-```bash
-alias tpack="'/mnt/c/Program Files/Talon/python.exe' 'C:/Users/<YourUsername>/AppData/Roaming/talon/talon-pack/tpack.py'"
-```
-
-**Windows (PowerShell)** - run `notepad $PROFILE` and add:
 ```powershell
-function tpack { & "C:\Program Files\Talon\python.exe" "$env:APPDATA\talon\talon-pack\tpack.py" @args }
+powershell -ExecutionPolicy Bypass -File "$env:APPDATA\talon\talon-pack\setup.ps1"
 ```
+Then run `. $PROFILE` or restart your terminal.
+</details>
 
-**3. (Optional) Add tab completion ([Zsh](#zsh-tab-completion) | [Bash](#bash-tab-completion)):**
-
-#### Zsh tab completion
-Add to `~/.zshrc`:
-```zsh
-_tpack() {
-  local -a commands=(
-    'info' 'patch' 'minor' 'major' 'version'
-    'install' 'update' 'outdated' 'sync'
-    'pip' 'generate' 'help'
-  )
-  local -a generate_types=(
-    'manifest' 'version' 'readme' 'shields'
-    'duplicate-check' 'install-block'
-  )
-  local -a pip_cmds=('remove' 'list')
-  local -a flags=(
-    '--dry-run' '--yes' '-y' '-v' '--verbose'
-    '--no-manifest' '--no-version' '--no-readme'
-    '--no-shields' '--no-duplicate-check' '--help'
-  )
-
-  if (( CURRENT == 2 )); then
-    _describe 'command' commands
-    _describe 'flag' flags
-  elif (( CURRENT == 3 )); then
-    case ${words[2]} in
-      generate) _describe 'type' generate_types ;;
-      pip) _describe 'pip command' pip_cmds ;;
-    esac
-  fi
-}
-compdef _tpack tpack
-```
-
-#### Bash tab completion
-Add to `~/.bashrc`:
-```bash
-_tpack() {
-  local cur prev commands generate_types pip_cmds flags
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info patch minor major version install update outdated sync pip generate help"
-  generate_types="manifest version readme shields duplicate-check install-block"
-  pip_cmds="remove list"
-  flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"
-
-  if (( COMP_CWORD == 1 )); then
-    COMPREPLY=($(compgen -W "$commands $flags" -- "$cur"))
-  elif (( COMP_CWORD == 2 )); then
-    case "$prev" in
-      generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
-      pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
-    esac
-  fi
-}
-complete -F _tpack tpack
-```
-
-**4. Reload your shell:**
-
-```bash
-# Zsh
-source ~/.zshrc
-
-# Bash
-source ~/.bashrc
-
-# PowerShell - restart terminal or run:
-. $PROFILE
-```
-
-**5. Try it out:**
+**3. Try it out:**
 
 ```bash
 tpack info some_folder       # See what a folder contributes
 tpack --dry-run some_folder  # Preview changes without writing
 ```
 
-**6. Run it on your repo:**
+**4. Run it on your repo:**
 
 ```bash
 tpack my_repo
