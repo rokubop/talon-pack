@@ -33,10 +33,6 @@ Usage:
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
-  tpack --no-manifest            Skip manifest generator
-  tpack --no-version             Skip version generator
-  tpack --no-readme              Skip readme generator
-  tpack --no-shields             Skip shields generator
   tpack --help                   Show this help message
 
 Config:
@@ -1655,16 +1651,11 @@ def main():
     # Parse flags
     dry_run = "--dry-run" in sys.argv
     verbose = "--verbose" in sys.argv or "-v" in sys.argv
-    no_manifest = "--no-manifest" in sys.argv
-    no_version = "--no-version" in sys.argv
-    no_readme = "--no-readme" in sys.argv
-    no_shields = "--no-shields" in sys.argv
-
-    # Determine which generators to run (config defaults, overridden by --no-* flags)
-    run_manifest = cfg_defaults.get("manifest", True) and not no_manifest
-    run_version = cfg_defaults.get("version", True) and not no_version
-    run_readme = cfg_defaults.get("readme", True) and not no_readme
-    run_shields = cfg_defaults.get("shields", False) and not no_shields
+    # Determine which generators to run (from config defaults)
+    run_manifest = cfg_defaults.get("manifest", True)
+    run_version = cfg_defaults.get("version", True)
+    run_readme = cfg_defaults.get("readme", True)
+    run_shields = cfg_defaults.get("shields", False)
 
     # Get directories from arguments or use current directory
     package_dirs = [Path(d).resolve() for d in sys.argv[1:] if not d.startswith('-')]

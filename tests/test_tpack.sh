@@ -260,13 +260,6 @@ echo ""
 echo "verbose dry-run:"
 run_test pass "tpack --dry-run --verbose succeeds" tpack --dry-run --verbose "$WORKDIR"
 
-# --- Skip flags ---
-echo ""
-echo "skip flags:"
-run_test pass "--no-manifest flag works" tpack --no-manifest --dry-run "$WORKDIR"
-run_test pass "--no-version flag works" tpack --no-version --dry-run "$WORKDIR"
-run_test pass "--no-readme flag works" tpack --no-readme --dry-run "$WORKDIR"
-
 # --- Error Cases ---
 echo ""
 echo "error cases:"
