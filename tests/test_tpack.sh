@@ -212,7 +212,7 @@ assert_file_contains "major bumped version" "$WORKDIR/manifest.json" '"version":
 # --- Pip Commands ---
 echo ""
 echo "pip commands:"
-run_test pass "tpack pip add succeeds" tpack pip "vgamepad>=1.0.0" "$WORKDIR"
+run_test pass "tpack pip add succeeds" tpack pip add "vgamepad>=1.0.0" "$WORKDIR"
 assert_file_contains "pip dep added to manifest" "$WORKDIR/manifest.json" '"vgamepad"'
 assert_file_contains "pip dep has version" "$WORKDIR/manifest.json" '>=1.0.0'
 
