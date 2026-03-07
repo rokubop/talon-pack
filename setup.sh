@@ -137,7 +137,7 @@ _tpack() {
   )
   local -a duplicate_check_values=('on' 'off')
   local -a flags=(
-    '--dry-run' '--yes' '-y' '-v' '--verbose' '--help'
+    '--dry-run' '--yes' '-y' '-v' '--verbose' '--dir' '--help'
   )
 
   if (( CURRENT == 2 )); then
@@ -170,7 +170,7 @@ _tpack() {
   pip_cmds="add remove list"
   status_values="reference prototype experimental preview stable deprecated archived"
   duplicate_check_values="on off"
-  flags="--dry-run --yes -y -v --verbose --help"
+  flags="--dry-run --yes -y -v --verbose --dir --help"
 
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=($(compgen -W "$commands $flags" -- "$cur"))

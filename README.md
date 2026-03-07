@@ -40,6 +40,7 @@ tpack generate <type> [dir]     # Generate a specific file
 tpack --dry-run                 # Preview changes without writing files
 tpack --yes, -y                 # Skip confirmation prompts
 tpack -v, --verbose             # Show detailed output (default: show only changes)
+tpack --dir <path>              # Search for dependencies in <path> instead of talon/user
 tpack --help                    # Show all commands and options
 ```
 

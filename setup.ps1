@@ -47,7 +47,7 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     )
     $duplicateCheckValues = @('on', 'off')
     $flags = @(
-        '--dry-run', '--yes', '-y', '-v', '--verbose', '--help'
+        '--dry-run', '--yes', '-y', '-v', '--verbose', '--dir', '--help'
     )
 
     $tokens = $commandAst.ToString() -split '\s+'

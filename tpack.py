@@ -33,6 +33,7 @@ Usage:
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
+  tpack --dir <path>             Search for dependencies in <path> instead of talon/user
   tpack --help                   Show this help message
 
 Config:
@@ -468,7 +469,7 @@ def scan_installed_versions(talon_user_dir: str) -> dict:
     return versions
 
 
-def outdated_command(directory: Path) -> bool:
+def outdated_command(directory: Path, search_dir: str = None) -> bool:
     """Show packages with newer versions available (local vs remote)."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
@@ -490,7 +491,7 @@ def outdated_command(directory: Path) -> bool:
         # Scan installed versions for dependencies
         installed = {}
         if dependencies:
-            talon_user_dir = find_talon_user_dir()
+            talon_user_dir = search_dir or find_talon_user_dir()
             if not talon_user_dir:
                 print(f"{RED}Error: Could not find Talon user directory{RESET}")
                 return False
@@ -570,7 +571,10 @@ def outdated_command(directory: Path) -> bool:
                 remote_display = remote_ver or "-"
                 print(f"  {name:<{name_width}}   {manifest_display:<12} {installed_display:<12} {remote_display:<12} {status}")
 
-        if not has_updates:
+        if has_updates:
+            print(f"\n  Run {GREEN}tpack update{RESET} to pull latest versions.")
+            print(f"  Run {GREEN}tpack sync{RESET} to update min_version in manifest (maintainers).")
+        else:
             print(f"\n{DIM}All packages are up to date.{RESET}")
 
         print()
@@ -675,7 +679,7 @@ def fetch_remote_manifest(url: str) -> dict | None:
     return None
 
 
-def install_command(target: str | None, directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+def install_command(target: str | None, directory: Path, dry_run: bool = False, auto_yes: bool = False, search_dir: str = None) -> bool:
     """Install dependencies from manifest or install a package from a GitHub URL."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
@@ -717,7 +721,7 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
             print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
             return True
 
-        talon_user_dir = find_talon_user_dir()
+        talon_user_dir = search_dir or find_talon_user_dir()
         if not talon_user_dir:
             print(f"{RED}Error: Could not find Talon user directory{RESET}")
             return False
@@ -948,7 +952,7 @@ def install_from_url(url: str, dry_run: bool = False, auto_yes: bool = False) ->
     return success
 
 
-def consumer_update_command(directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+def consumer_update_command(directory: Path, dry_run: bool = False, auto_yes: bool = False, search_dir: str = None) -> bool:
     """Pull latest for the current package and its installed dependencies."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
@@ -974,7 +978,7 @@ def consumer_update_command(directory: Path, dry_run: bool = False, auto_yes: bo
             to_update.append((pkg_name, str(directory)))
 
         if dependencies:
-            talon_user_dir = find_talon_user_dir()
+            talon_user_dir = search_dir or find_talon_user_dir()
             if not talon_user_dir:
                 print(f"{RED}Error: Could not find Talon user directory{RESET}")
                 return False
@@ -1037,7 +1041,7 @@ def consumer_update_command(directory: Path, dry_run: bool = False, auto_yes: bo
         return False
 
 
-def sync_command(dep_name: str | None, directory: Path, dry_run: bool = False) -> bool:
+def sync_command(dep_name: str | None, directory: Path, dry_run: bool = False, search_dir: str = None) -> bool:
     """Update dependency min_version(s) to match installed versions."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
 
@@ -1061,7 +1065,7 @@ def sync_command(dep_name: str | None, directory: Path, dry_run: bool = False) -
             print(f"{DIM}Dependencies: {', '.join(sorted(dependencies.keys()))}{RESET}")
             return False
 
-        talon_user_dir = find_talon_user_dir()
+        talon_user_dir = search_dir or find_talon_user_dir()
         if not talon_user_dir:
             print(f"{RED}Error: Could not find Talon user directory{RESET}")
             return False
@@ -1453,7 +1457,18 @@ def main():
         sys.exit(0)
 
     # Handle subcommands
+    # Parse --dir flag for dependency search path override
+    search_dir = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--dir" and i + 1 < len(sys.argv):
+            search_dir = str(Path(sys.argv[i + 1]).resolve())
+            break
+
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
+    # Remove the --dir value from args (it's not a flag, so it wasn't filtered)
+    if search_dir:
+        resolved = str(Path(search_dir).resolve())
+        args = [a for a in args if str(Path(a).resolve()) != resolved]
 
     # tpack info [directory]
     if len(args) >= 1 and args[0] == 'info':
@@ -1476,6 +1491,8 @@ def main():
                 name = manifest.get('name', directory.name)
                 version = manifest.get('version', 'unknown')
                 print(f"{name} v{version}")
+                print(f"\nUsage: tpack major|minor|patch")
+                print(f"       tpack version major|minor|patch")
             except Exception as e:
                 print(f"Error reading manifest.json: {e}")
                 sys.exit(1)
@@ -1543,7 +1560,7 @@ def main():
         auto_yes = "--yes" in sys.argv or "-y" in sys.argv
         target = args[1] if len(args) >= 2 else None
         directory = Path(".").resolve()
-        success = install_command(target, directory, dry_run, auto_yes)
+        success = install_command(target, directory, dry_run, auto_yes, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack update [directory]
@@ -1551,13 +1568,13 @@ def main():
         dry_run = "--dry-run" in sys.argv
         auto_yes = "--yes" in sys.argv or "-y" in sys.argv
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
-        success = consumer_update_command(directory, dry_run, auto_yes)
+        success = consumer_update_command(directory, dry_run, auto_yes, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack outdated [directory]
     if len(args) >= 1 and args[0] == 'outdated':
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
-        success = outdated_command(directory)
+        success = outdated_command(directory, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack sync [dep_name] [directory]
@@ -1575,7 +1592,7 @@ def main():
                 dep_name = args[1]
                 if len(args) >= 3:
                     directory = Path(args[2]).resolve()
-        success = sync_command(dep_name, directory, dry_run)
+        success = sync_command(dep_name, directory, dry_run, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack pip add <package> [directory]
