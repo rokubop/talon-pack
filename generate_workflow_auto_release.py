@@ -29,6 +29,7 @@ on:
 
 jobs:
   release:
+    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     permissions:
       contents: write

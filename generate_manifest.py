@@ -1184,7 +1184,18 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
 
     root_path = os.getcwd()
 
+    # Parse --search flag for dependency search path override
+    search_dir = None
+    search_dir_value = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--search" and i + 1 < len(sys.argv):
+            search_dir_value = sys.argv[i + 1]
+            search_dir = os.path.abspath(search_dir_value)
+            break
+
     CREATE_MANIFEST_DIRS = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
+    if search_dir_value:
+        CREATE_MANIFEST_DIRS = [a for a in CREATE_MANIFEST_DIRS if a != search_dir_value]
 
     if dry_run:
         print(f"DRY RUN MODE - No files will be modified\n")
@@ -1192,7 +1203,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
     if verbose:
         print(f"Processing {len(CREATE_MANIFEST_DIRS)} package(s)...\n")
 
-    talon_user_dir = find_talon_user_dir()
+    talon_user_dir = search_dir or find_talon_user_dir()
 
     if not os.path.exists(root_path):
         from diff_utils import RED, RESET

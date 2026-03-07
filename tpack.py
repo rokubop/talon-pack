@@ -15,6 +15,7 @@ Usage:
   tpack outdated [dir]             Check for newer versions (local vs remote)
   tpack sync [dep] [dir]           Update dependency min_version to installed version
   tpack sync [dir]                 Update all dependencies to installed versions
+  tpack release [dir]              Create a GitHub release for the current version
   tpack status [dir]               Show current status
   tpack status <value> [dir]       Set status (experimental, preview, stable, etc.)
   tpack duplicate-check [dir]      Show current duplicate check setting
@@ -33,7 +34,7 @@ Usage:
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
-  tpack --dir <path>             Search for dependencies in <path> instead of talon/user
+  tpack --search <path>           Search <path> for dependencies (relative or absolute)
   tpack --help                   Show this help message
 
 Config:
@@ -469,7 +470,7 @@ def scan_installed_versions(talon_user_dir: str) -> dict:
     return versions
 
 
-def outdated_command(directory: Path, search_dir: str = None) -> bool:
+def outdated_command(directory: Path, search_dir: str = None, search_dir_display: str = None) -> bool:
     """Show packages with newer versions available (local vs remote)."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
@@ -546,25 +547,33 @@ def outdated_command(directory: Path, search_dir: str = None) -> bool:
             print(f"\n  {'Dependency':<{name_width}}   {'Manifest':<12} {'Local':<12} {'Remote':<12} {'Status'}")
             print(f"  {'-' * name_width}   {'-' * 12} {'-' * 12} {'-' * 12} {'-' * 16}")
 
+            has_sync_needed = False
             for name, info in sorted(deps_to_check.items()):
                 manifest_ver = info["manifest_version"]
                 installed_ver = info.get("installed_version")
                 remote_ver = remote_versions.get(name)
-                compare_ver = manifest_ver or installed_ver
 
-                if compare_ver is None:
+                if installed_ver is None:
                     status = f"{RED}not installed{RESET}"
                     has_updates = True
-                elif remote_ver and remote_ver != compare_ver:
-                    remote_parts = [int(x) for x in remote_ver.split('.')]
-                    compare_parts = [int(x) for x in compare_ver.split('.')]
-                    if remote_parts > compare_parts:
+                else:
+                    installed_parts = [int(x) for x in installed_ver.split('.')]
+                    needs_update = remote_ver and [int(x) for x in remote_ver.split('.')] > installed_parts
+                    needs_sync = manifest_ver and installed_parts > [int(x) for x in manifest_ver.split('.')]
+
+                    if needs_update and needs_sync:
+                        status = f"{YELLOW}update available, needs sync{RESET}"
+                        has_updates = True
+                        has_sync_needed = True
+                    elif needs_update:
                         status = f"{YELLOW}update available{RESET}"
+                        has_updates = True
+                    elif needs_sync:
+                        status = f"{YELLOW}needs sync{RESET}"
+                        has_sync_needed = True
                         has_updates = True
                     else:
                         status = f"{GREEN}up to date{RESET}"
-                else:
-                    status = f"{GREEN}up to date{RESET}"
 
                 manifest_display = manifest_ver or "-"
                 installed_display = installed_ver or "-"
@@ -572,8 +581,16 @@ def outdated_command(directory: Path, search_dir: str = None) -> bool:
                 print(f"  {name:<{name_width}}   {manifest_display:<12} {installed_display:<12} {remote_display:<12} {status}")
 
         if has_updates:
-            print(f"\n  Run {GREEN}tpack update{RESET} to pull latest versions.")
-            print(f"  Run {GREEN}tpack sync{RESET} to update min_version in manifest (maintainers).")
+            dir_hint = f" --search {search_dir_display or search_dir}" if search_dir else ""
+            if any(
+                info.get("installed_version") and remote_versions.get(name) and
+                [int(x) for x in remote_versions[name].split('.')] > [int(x) for x in info["installed_version"].split('.')]
+                for name, info in deps_to_check.items()
+                if info.get("installed_version")
+            ):
+                print(f"\n  Run {GREEN}tpack update{dir_hint}{RESET} to pull latest versions.")
+            if has_sync_needed:
+                print(f"  Run {GREEN}tpack sync{dir_hint}{RESET} to update min_version in manifest.")
         else:
             print(f"\n{DIM}All packages are up to date.{RESET}")
 
@@ -1163,6 +1180,150 @@ def reorder_manifest_key(manifest: dict, key: str, after: str) -> dict:
     return result
 
 
+def release_command(directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+    """Create a GitHub release for the current version."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    version = manifest.get("version")
+    if not version:
+        print(f"{RED}Error: No version found in manifest.json{RESET}")
+        return False
+
+    github_url = manifest.get("github", "")
+    tag = f"v{version}"
+
+    # Check gh CLI is available
+    try:
+        subprocess.run(["gh", "--version"], capture_output=True, check=True)
+    except FileNotFoundError:
+        print(f"{RED}Error: 'gh' CLI not found. Install from https://cli.github.com{RESET}")
+        return False
+    except subprocess.CalledProcessError:
+        print(f"{RED}Error: 'gh' CLI failed{RESET}")
+        return False
+
+    # Check we're in a git repo
+    git_check = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if git_check.returncode != 0:
+        print(f"{RED}Error: Not a git repository: {directory}{RESET}")
+        return False
+
+    # Check for uncommitted changes
+    status_result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if status_result.stdout.strip():
+        print(f"{YELLOW}Warning: You have uncommitted changes.{RESET}")
+        print(f"{DIM}Commit and push before releasing.{RESET}")
+        return False
+
+    # Check if tag already exists
+    tag_check = subprocess.run(
+        ["git", "tag", "-l", tag],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if tag_check.stdout.strip():
+        print(f"{DIM}{tag} already released.{RESET}")
+        return True
+
+    # Check if local is ahead of remote
+    subprocess.run(
+        ["git", "fetch", "--quiet"],
+        capture_output=True, cwd=str(directory)
+    )
+    ahead_check = subprocess.run(
+        ["git", "rev-list", "--count", "@{u}..HEAD"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if ahead_check.returncode == 0 and ahead_check.stdout.strip() not in ("0", ""):
+        ahead = ahead_check.stdout.strip()
+        print(f"{YELLOW}Warning: {ahead} unpushed commit(s). Push before releasing.{RESET}")
+        return False
+
+    name = manifest.get("name", directory.name)
+    print(f"\n{CYAN}{name}{RESET}")
+    print(f"  Create tag {GREEN}{tag}{RESET} and GitHub release")
+    if github_url:
+        print(f"  {DIM}{github_url}/releases{RESET}")
+
+    # Show commits since last tag
+    last_tag = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0", "HEAD"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if last_tag.returncode == 0 and last_tag.stdout.strip():
+        prev_tag = last_tag.stdout.strip()
+        log_range = f"{prev_tag}..HEAD"
+    else:
+        prev_tag = None
+        log_range = "HEAD"
+
+    commits = subprocess.run(
+        ["git", "log", log_range, "--oneline", "--no-decorate"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if commits.returncode == 0 and commits.stdout.strip():
+        lines = commits.stdout.strip().split("\n")
+        label = f"Commits since {prev_tag}" if prev_tag else "Commits"
+        print(f"\n  {label}:")
+        for line in lines[:20]:
+            print(f"    {DIM}{line}{RESET}")
+        if len(lines) > 20:
+            print(f"    {DIM}... and {len(lines) - 20} more{RESET}")
+
+    if dry_run:
+        print(f"\n  {DIM}(dry run){RESET}")
+        return True
+
+    if not confirm_action("\nProceed?", auto_yes):
+        print(f"{DIM}Release cancelled.{RESET}")
+        return False
+
+    # Create tag and release
+    tag_result = subprocess.run(
+        ["git", "tag", tag],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if tag_result.returncode != 0:
+        print(f"{RED}Error creating tag: {tag_result.stderr.strip()}{RESET}")
+        return False
+
+    push_result = subprocess.run(
+        ["git", "push", "origin", tag],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if push_result.returncode != 0:
+        print(f"{RED}Error pushing tag: {push_result.stderr.strip()}{RESET}")
+        return False
+
+    release_result = subprocess.run(
+        ["gh", "release", "create", tag, "--title", tag, "--generate-notes"],
+        capture_output=True, text=True, cwd=str(directory)
+    )
+    if release_result.returncode != 0:
+        print(f"{RED}Error creating release: {release_result.stderr.strip()}{RESET}")
+        return False
+
+    release_url = release_result.stdout.strip()
+    print(f"  {GREEN}Released {tag}{RESET}")
+    if release_url:
+        print(f"  {release_url}")
+    print()
+    return True
+
+
 def pip_command(action: str, package_spec: str | None, directory: Path, dry_run: bool = False) -> bool:
     """Add or remove a pip dependency."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
@@ -1359,7 +1520,8 @@ def run_generator(script_name: str, directory: str, extra_args: list = None) -> 
 
 def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = False,
                       run_manifest: bool = True, run_version: bool = True,
-                      run_readme: bool = True, run_shields: bool = False) -> bool:
+                      run_readme: bool = True, run_shields: bool = False,
+                      search_dir: str = None) -> bool:
     """Process a single directory with selected generators."""
     if not package_dir.exists():
         from diff_utils import RED, RESET
@@ -1394,6 +1556,8 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
         manifest_args = list(base_args)
         if temp_manifest_path:
             manifest_args.extend(["--output-manifest-path", temp_manifest_path])
+        if search_dir:
+            manifest_args.extend(["--search", search_dir])
 
         # Build args for other generators
         other_args = []
@@ -1457,18 +1621,19 @@ def main():
         sys.exit(0)
 
     # Handle subcommands
-    # Parse --dir flag for dependency search path override
+    # Parse --search flag for dependency search path override
     search_dir = None
+    search_dir_raw = None
     for i, arg in enumerate(sys.argv[1:], 1):
-        if arg == "--dir" and i + 1 < len(sys.argv):
-            search_dir = str(Path(sys.argv[i + 1]).resolve())
+        if arg == "--search" and i + 1 < len(sys.argv):
+            search_dir_raw = sys.argv[i + 1]
+            search_dir = str(Path(search_dir_raw).resolve())
             break
 
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
-    # Remove the --dir value from args (it's not a flag, so it wasn't filtered)
+    # Remove the --search value from args (it's not a flag, so it wasn't filtered)
     if search_dir:
-        resolved = str(Path(search_dir).resolve())
-        args = [a for a in args if str(Path(a).resolve()) != resolved]
+        args = [a for a in args if a != search_dir_raw]
 
     # tpack info [directory]
     if len(args) >= 1 and args[0] == 'info':
@@ -1574,7 +1739,7 @@ def main():
     # tpack outdated [directory]
     if len(args) >= 1 and args[0] == 'outdated':
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
-        success = outdated_command(directory, search_dir)
+        success = outdated_command(directory, search_dir, search_dir_raw)
         sys.exit(0 if success else 1)
 
     # tpack sync [dep_name] [directory]
@@ -1593,6 +1758,14 @@ def main():
                 if len(args) >= 3:
                     directory = Path(args[2]).resolve()
         success = sync_command(dep_name, directory, dry_run, search_dir)
+        sys.exit(0 if success else 1)
+
+    # tpack release [directory]
+    if len(args) >= 1 and args[0] == 'release':
+        dry_run = "--dry-run" in sys.argv
+        auto_yes = "--yes" in sys.argv or "-y" in sys.argv
+        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+        success = release_command(directory, dry_run, auto_yes)
         sys.exit(0 if success else 1)
 
     # tpack pip add <package> [directory]
@@ -1676,7 +1849,11 @@ def main():
     run_shields = cfg_defaults.get("shields", False)
 
     # Get directories from arguments or use current directory
-    package_dirs = [Path(d).resolve() for d in sys.argv[1:] if not d.startswith('-')]
+    # Filter out --search value and flags
+    dir_args = [d for d in sys.argv[1:] if not d.startswith('-')]
+    if search_dir_raw:
+        dir_args = [d for d in dir_args if d != search_dir_raw]
+    package_dirs = [Path(d).resolve() for d in dir_args]
     if not package_dirs:
         package_dirs = [Path(".").resolve()]
 
@@ -1687,7 +1864,7 @@ def main():
     total_count = len(package_dirs)
 
     for package_dir in package_dirs:
-        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields):
+        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields, search_dir):
             success_count += 1
 
     from diff_utils import GREEN, DIM, RESET

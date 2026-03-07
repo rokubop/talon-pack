@@ -24,6 +24,7 @@ tpack update [dir]              # Pull latest for all dependencies
 tpack outdated [dir]            # Check for newer versions (local vs remote)
 tpack sync [dep] [dir]          # Update dependency min_version to installed version
 tpack sync [dir]                # Update all dependencies to installed versions
+tpack release [dir]             # Create a GitHub release for the current version
 tpack duplicate-check [dir]     # Show current duplicate check setting
 tpack duplicate-check on [dir]  # Enable duplicate check in _version.py
 tpack duplicate-check off [dir] # Disable duplicate check in _version.py
@@ -40,7 +41,7 @@ tpack generate <type> [dir]     # Generate a specific file
 tpack --dry-run                 # Preview changes without writing files
 tpack --yes, -y                 # Skip confirmation prompts
 tpack -v, --verbose             # Show detailed output (default: show only changes)
-tpack --dir <path>              # Search for dependencies in <path> instead of talon/user
+tpack --search <path>            # Search <path> for dependencies (relative or absolute)
 tpack --help                    # Show all commands and options
 ```
 
@@ -132,6 +133,7 @@ tpack update                      # Pull latest for all dependencies
 tpack outdated                    # Check for newer versions (local vs remote)
 tpack sync                        # Update all min_versions to installed versions
 tpack sync talon-mouse-rig        # Update a specific dependency's min_version
+tpack release                     # Create a GitHub release for the current version
 ```
 
 ## Example `manifest.json`

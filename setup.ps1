@@ -33,7 +33,7 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $commands = @(
         'info', 'patch', 'minor', 'major', 'version',
-        'install', 'update', 'outdated', 'sync',
+        'install', 'update', 'outdated', 'sync', 'release',
         'status', 'duplicate-check', 'pip', 'generate', 'help'
     )
     $generateTypes = @(
@@ -47,7 +47,7 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     )
     $duplicateCheckValues = @('on', 'off')
     $flags = @(
-        '--dry-run', '--yes', '-y', '-v', '--verbose', '--dir', '--help'
+        '--dry-run', '--yes', '-y', '-v', '--verbose', '--search', '--help'
     )
 
     $tokens = $commandAst.ToString() -split '\s+'

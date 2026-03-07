@@ -123,7 +123,7 @@ zsh_completion() {
 _tpack() {
   local -a commands=(
     'info' 'patch' 'minor' 'major' 'version'
-    'install' 'update' 'outdated' 'sync'
+    'install' 'update' 'outdated' 'sync' 'release'
     'status' 'duplicate-check' 'pip' 'generate' 'help'
   )
   local -a generate_types=(
@@ -137,7 +137,7 @@ _tpack() {
   )
   local -a duplicate_check_values=('on' 'off')
   local -a flags=(
-    '--dry-run' '--yes' '-y' '-v' '--verbose' '--dir' '--help'
+    '--dry-run' '--yes' '-y' '-v' '--verbose' '--search' '--help'
   )
 
   if (( CURRENT == 2 )); then
@@ -165,12 +165,12 @@ _tpack() {
   local cur prev commands generate_types pip_cmds flags
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info patch minor major version install update outdated sync status duplicate-check pip generate help"
+  commands="info patch minor major version install update outdated sync release status duplicate-check pip generate help"
   generate_types="manifest version readme shields install-block workflow-auto-release"
   pip_cmds="add remove list"
   status_values="reference prototype experimental preview stable deprecated archived"
   duplicate_check_values="on off"
-  flags="--dry-run --yes -y -v --verbose --dir --help"
+  flags="--dry-run --yes -y -v --verbose --search --help"
 
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=($(compgen -W "$commands $flags" -- "$cur"))
