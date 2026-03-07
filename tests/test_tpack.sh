@@ -271,12 +271,12 @@ WORKDIR_VIS="$(setup_workdir)"
 tpack --yes "$WORKDIR_VIS" > /dev/null 2>&1
 # Remove github field to simulate no URL
 "$PYTHON" -c "
-import json
-p = '$WORKDIR_VIS/manifest.json'
+import json, sys
+p = sys.argv[1] + '/manifest.json'
 with open(p) as f: d = json.load(f)
 d.pop('github', None)
 with open(p, 'w') as f: json.dump(d, f, indent=2)
-"
+" "$WORKDIR_VIS"
 run_test fail "no github URL blocks without --force" tpack generate workflow-auto-release "$WORKDIR_VIS"
 assert_file_not_exists "release.yml not created without --force" "$WORKDIR_VIS/.github/workflows/release.yml"
 run_test pass "no github URL proceeds with --force" tpack generate workflow-auto-release "$WORKDIR_VIS" --force
@@ -287,12 +287,12 @@ cleanup_workdir "$WORKDIR_VIS"
 WORKDIR_PUB="$(setup_workdir)"
 tpack --yes "$WORKDIR_PUB" > /dev/null 2>&1
 "$PYTHON" -c "
-import json
-p = '$WORKDIR_PUB/manifest.json'
+import json, sys
+p = sys.argv[1] + '/manifest.json'
 with open(p) as f: d = json.load(f)
 d['github'] = 'https://github.com/rokubop/talon-pack'
 with open(p, 'w') as f: json.dump(d, f, indent=2)
-"
+" "$WORKDIR_PUB"
 run_test pass "public repo succeeds without --force" tpack generate workflow-auto-release "$WORKDIR_PUB"
 assert_file_exists "release.yml created for public repo" "$WORKDIR_PUB/.github/workflows/release.yml"
 cleanup_workdir "$WORKDIR_PUB"
@@ -301,12 +301,12 @@ cleanup_workdir "$WORKDIR_PUB"
 WORKDIR_DRY="$(setup_workdir)"
 tpack --yes "$WORKDIR_DRY" > /dev/null 2>&1
 "$PYTHON" -c "
-import json
-p = '$WORKDIR_DRY/manifest.json'
+import json, sys
+p = sys.argv[1] + '/manifest.json'
 with open(p) as f: d = json.load(f)
 d['github'] = 'https://github.com/rokubop/talon-pack'
 with open(p, 'w') as f: json.dump(d, f, indent=2)
-"
+" "$WORKDIR_DRY"
 run_test pass "workflow-auto-release dry-run succeeds" tpack generate workflow-auto-release "$WORKDIR_DRY" --dry-run
 assert_file_not_exists "release.yml not created on dry-run" "$WORKDIR_DRY/.github/workflows/release.yml"
 cleanup_workdir "$WORKDIR_DRY"

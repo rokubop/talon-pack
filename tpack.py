@@ -1576,6 +1576,8 @@ def main():
             extra_args.append("--dry-run")
         if verbose:
             extra_args.append("--verbose")
+        if "--force" in sys.argv:
+            extra_args.append("--force")
 
         success = run_generator(gen_map[gen_type], str(directory), extra_args if extra_args else None)
         sys.exit(0 if success else 1)
