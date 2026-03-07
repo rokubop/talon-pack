@@ -223,6 +223,18 @@ run_test pass "tpack pip remove succeeds" tpack pip remove vgamepad "$WORKDIR"
 # After removing the only pip dep, pipDependencies key should be gone
 run_test pass "pip dep removed from manifest" bash -c "! grep -q 'vgamepad' '$WORKDIR/manifest.json'"
 
+# --- Duplicate Check ---
+echo ""
+echo "duplicate-check:"
+run_test pass "duplicate-check shows status" tpack duplicate-check "$WORKDIR"
+assert_output_contains "duplicate-check shows off by default" "off" tpack duplicate-check "$WORKDIR"
+run_test pass "duplicate-check on succeeds" tpack duplicate-check on "$WORKDIR"
+assert_file_contains "manifest has _generatorDuplicateCheck true" "$WORKDIR/manifest.json" '"_generatorDuplicateCheck": true'
+assert_file_contains "_version.py has duplicate check" "$WORKDIR/_version.py" "DUPLICATE PACKAGE"
+run_test pass "duplicate-check off succeeds" tpack duplicate-check off "$WORKDIR"
+assert_file_contains "manifest has _generatorDuplicateCheck false" "$WORKDIR/manifest.json" '"_generatorDuplicateCheck": false'
+run_test pass "_version.py no longer has duplicate check" bash -c "! grep -q 'DUPLICATE PACKAGE' '$WORKDIR/_version.py'"
+
 # --- Generate Individual ---
 echo ""
 echo "generate individual:"

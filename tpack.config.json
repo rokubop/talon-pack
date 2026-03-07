@@ -3,7 +3,6 @@
     "manifest": true,
     "version": true,
     "readme": true,
-    "shields": true,
-    "duplicateCheck": false
+    "shields": true
   }
 }

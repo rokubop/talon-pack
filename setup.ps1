@@ -34,21 +34,22 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     $commands = @(
         'info', 'patch', 'minor', 'major', 'version',
         'install', 'update', 'outdated', 'sync',
-        'status', 'pip', 'generate', 'help'
+        'status', 'duplicate-check', 'pip', 'generate', 'help'
     )
     $generateTypes = @(
         'manifest', 'version', 'readme', 'shields',
-        'duplicate-check', 'install-block', 'workflow-auto-release'
+        'install-block', 'workflow-auto-release'
     )
     $pipCmds = @('add', 'remove', 'list')
     $statusValues = @(
         'reference', 'prototype', 'experimental', 'preview',
         'stable', 'deprecated', 'archived'
     )
+    $duplicateCheckValues = @('on', 'off')
     $flags = @(
         '--dry-run', '--yes', '-y', '-v', '--verbose',
         '--no-manifest', '--no-version', '--no-readme',
-        '--no-shields', '--no-duplicate-check', '--help'
+        '--no-shields', '--help'
     )
 
     $tokens = $commandAst.ToString() -split '\s+'
@@ -65,6 +66,9 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
             ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
     } elseif ($tokens[1] -eq 'status') {
         $statusValues | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'duplicate-check') {
+        $duplicateCheckValues | Where-Object { $_ -like "$wordToComplete*" } |
             ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
     }
 }

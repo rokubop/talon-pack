@@ -24,6 +24,9 @@ tpack update [dir]             # Pull latest for all dependencies
 tpack outdated [dir]           # Check for newer versions (local vs remote)
 tpack sync [dep] [dir]         # Update dependency min_version to installed version
 tpack sync [dir]               # Update all dependencies to installed versions
+tpack duplicate-check [dir]    # Show current duplicate check setting
+tpack duplicate-check on [dir] # Enable duplicate check in _version.py
+tpack duplicate-check off [dir]# Disable duplicate check in _version.py
 tpack pip <pkg> [dir]          # Add pip dependency (e.g. vgamepad>=1.0.0)
 tpack pip remove <pkg> [dir]   # Remove pip dependency
 tpack pip list [dir]           # List pip dependencies
@@ -32,7 +35,6 @@ tpack generate <type> [dir]    # Generate a specific file
   version                      #   Generate _version.py
   readme                       #   Generate README.md
   shields                      #   Generate shield badges
-  duplicate-check              #   Generate _duplicate_check.py
   install-block                #   Generate install block (outputs to console)
   workflow-auto-release        #   Generate .github/workflows/release.yml
 tpack --dry-run                # Preview changes without writing files
@@ -105,8 +107,7 @@ Edit `tpack.config.json` in the talon-pack directory to change default behavior:
     "manifest": true,
     "version": true,
     "readme": true,
-    "shields": false,
-    "duplicateCheck": false
+    "shields": false
   }
 }
 ```
@@ -378,6 +379,7 @@ app.register("ready", validate_dependencies)
 | _generatorRequiresVersionAction | Whether the generator should require a version action (default: true if namespace exists). Set to false to disable version action requirement check |
 | _generatorStrictNamespace | Whether the generator should validate namespace consistency (default: true). Set to false to allow multiple namespaces and skip validation warnings. Useful for collection packages like talon-community |
 | _generatorFrozenFields | Array of field names to prevent from being auto-updated. e.g.: `"requires"`, `"license"`, `"contributes"`, or sub-fields like `"contributes.actions"`, `"depends.tags"`, etc |
+| _generatorDuplicateCheck | Whether to include duplicate package detection in `_version.py` (default: false). Detects if the same package is loaded from multiple locations and raises an error. Useful for packages bundled as git subtrees. |
 | _generatorShields | Whether to generate/update shield badges in README.md (default: true). Set to false to disable automatic shield generation. |
 
 Most fields are preserved across regenerations, but `contributes`, `depends`, and `dependencies` (except for `version`) are auto-generated each time.

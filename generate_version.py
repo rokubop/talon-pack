@@ -96,8 +96,9 @@ def generate_version_action(package_dir: str, force: bool = False, dry_run: bool
     requires_version_action = manifest.get('_generatorRequiresVersionAction', True)
     has_dependencies = bool(manifest.get('dependencies'))
     dependency_check = manifest.get('validateDependencies', True)
+    duplicate_check = manifest.get('_generatorDuplicateCheck', False)
 
-    if not requires_version_action and (not has_dependencies or not dependency_check):
+    if not requires_version_action and (not has_dependencies or not dependency_check) and not duplicate_check:
         from diff_utils import DIM, RESET
         if verbose:
             print(f"\nSkipping _version.py generation:")
@@ -106,8 +107,8 @@ def generate_version_action(package_dir: str, force: bool = False, dry_run: bool
             print(f"{DIM}_version.py: skipped{RESET}")
         return
 
-    # Only require namespace if version action is required
-    if requires_version_action and not namespace:
+    # Only require namespace if version action or duplicate check is required
+    if (requires_version_action or duplicate_check) and not namespace:
         from diff_utils import RED, RESET
         print(f"{RED}Error: No namespace found in manifest.json{RESET}")
         print(f"Either add a namespace or set _generatorRequiresVersionAction to false")
@@ -129,15 +130,19 @@ def generate_version_action(package_dir: str, force: bool = False, dry_run: bool
     version_file_exists = os.path.exists(version_file_path)
     existing_version = get_existing_generator_version(version_file_path)
 
-    # Force regeneration if dependency state changed
+    # Force regeneration if dependency or duplicate check state changed
     needs_regen = False
     if version_file_exists:
         with open(version_file_path, 'r', encoding='utf-8') as f:
             existing_content = f.read()
             has_validation_code = 'validate_dependencies' in existing_content
+            has_duplicate_code = 'DUPLICATE PACKAGE' in existing_content
             if has_dependencies != has_validation_code:
                 needs_regen = True
                 print(f"Regenerating _version.py (dependency state changed)")
+            if duplicate_check != has_duplicate_code:
+                needs_regen = True
+                print(f"Regenerating _version.py (duplicate check state changed)")
 
     if not force and not needs_regen and existing_version and existing_version == generator_version:
         from diff_utils import status_no_change
@@ -155,12 +160,21 @@ def generate_version_action(package_dir: str, force: bool = False, dry_run: bool
 
     # Generate the version action file
     description_parts = []
+    if duplicate_check:
+        description_parts.append("- Duplicate package detection")
     if action_name:
         description_parts.append(f"- Package version checking via {action_name}_version() action")
     if has_dependencies and dependency_check:
         description_parts.append("- Automatic dependency validation on startup")
 
-    talon_imports = "Module, actions, app" if (has_dependencies and dependency_check) else "Module"
+    needs_actions_import = (has_dependencies and dependency_check) or duplicate_check
+    needs_app_import = has_dependencies and dependency_check
+    talon_import_parts = ["Module"]
+    if needs_actions_import:
+        talon_import_parts.append("actions")
+    if needs_app_import:
+        talon_import_parts.append("app")
+    talon_imports = ", ".join(talon_import_parts)
 
     version_file_content = f'''"""
 DO NOT EDIT - Auto-generated file
@@ -172,6 +186,28 @@ This file provides:
 import json
 from pathlib import Path
 from talon import {talon_imports}
+
+'''
+
+    # Duplicate check - runs at import time, before action registration
+    if duplicate_check and action_name:
+        version_file_content += f'''_duplicate = False
+try:
+    actions.user.{action_name}_version()
+    _duplicate = True
+except Exception:
+    pass
+
+if _duplicate:
+    print("============================================================")
+    print("DUPLICATE PACKAGE: {package_name} ({namespace})")
+    print("")
+    print("  {package_name} is already loaded from another location.")
+    print("  Remove the duplicate so only one copy exists in talon/user.")
+    print("============================================================")
+    raise RuntimeError(
+        "Duplicate package: {package_name} ({namespace}) is already loaded."
+    )
 
 '''
 

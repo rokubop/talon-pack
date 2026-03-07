@@ -17,6 +17,9 @@ Usage:
   tpack sync [dir]                 Update all dependencies to installed versions
   tpack status [dir]               Show current status
   tpack status <value> [dir]       Set status (experimental, preview, stable, etc.)
+  tpack duplicate-check [dir]      Show current duplicate check setting
+  tpack duplicate-check on [dir]   Enable duplicate check in _version.py
+  tpack duplicate-check off [dir]  Disable duplicate check in _version.py
   tpack pip add <pkg> [dir]        Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
@@ -25,7 +28,6 @@ Usage:
     version                        Generate _version.py
     readme                         Generate README.md
     shields                        Generate shield badges
-    duplicate-check                Generate _duplicate_check.py
     install-block                  Generate install block (outputs to console)
     workflow-auto-release          Generate .github/workflows/release.yml
   tpack --dry-run                Preview changes without writing files
@@ -35,7 +37,6 @@ Usage:
   tpack --no-version             Skip version generator
   tpack --no-readme              Skip readme generator
   tpack --no-shields             Skip shields generator
-  tpack --no-duplicate-check     Skip duplicate check generator
   tpack --help                   Show this help message
 
 Config:
@@ -189,6 +190,55 @@ def status_command(new_status: str | None, directory: Path, dry_run: bool = Fals
                 readme_path = directory / "README.md"
                 if readme_path.exists():
                     run_generator("generate_shields.py", str(directory))
+
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+def duplicate_check_command(value: bool | None, directory: Path, dry_run: bool = False) -> bool:
+    """Show or update the duplicate check setting in manifest.json."""
+    from diff_utils import GREEN, RED, CYAN, DIM, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            old_content = f.read()
+            manifest = json.loads(old_content)
+
+        current = manifest.get('_generatorDuplicateCheck', False)
+
+        # Show current setting
+        if value is None:
+            name = manifest.get('name', directory.name)
+            state = f"{GREEN}on{RESET}" if current else f"{DIM}off{RESET}"
+            print(f"{name}: duplicate-check {state}")
+            return True
+
+        if current == value:
+            state = "on" if value else "off"
+            print(f"Duplicate check already {state}")
+            return True
+
+        manifest['_generatorDuplicateCheck'] = value
+        new_content = json.dumps(manifest, indent=2)
+
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+        has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+        if has_changes:
+            print(format_diff_output(diff_output))
+
+        if not dry_run:
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+
+            # Regenerate _version.py to include/remove duplicate check
+            run_generator("generate_version.py", str(directory), ["--force"])
 
         return True
     except Exception as e:
@@ -1261,8 +1311,7 @@ def load_config() -> dict:
             "manifest": True,
             "version": True,
             "readme": True,
-            "shields": False,
-            "duplicateCheck": False
+            "shields": False
         }
     }
     if CONFIG_PATH.exists():
@@ -1309,8 +1358,7 @@ def run_generator(script_name: str, directory: str, extra_args: list = None) -> 
 
 def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = False,
                       run_manifest: bool = True, run_version: bool = True,
-                      run_readme: bool = True, run_shields: bool = False,
-                      run_duplicate_check: bool = False) -> bool:
+                      run_readme: bool = True, run_shields: bool = False) -> bool:
     """Process a single directory with selected generators."""
     if not package_dir.exists():
         from diff_utils import RED, RESET
@@ -1369,9 +1417,6 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
                 shields_args.append("--dry-run")
             shields_args.append("--quiet")  # quiet when running as part of normal flow
             generators.append(("generate_shields.py", shields_args if shields_args else None))
-        if run_duplicate_check:
-            generators.append(("generate_duplicate_check.py", other_args if other_args else None))
-
         if not generators:
             print("No generators selected to run.")
             return False
@@ -1473,6 +1518,28 @@ def main():
         success = status_command(new_status, directory, dry_run)
         sys.exit(0 if success else 1)
 
+    # tpack duplicate-check [directory]
+    # tpack duplicate-check on/off [directory]
+    if len(args) >= 1 and args[0] == 'duplicate-check':
+        dry_run = "--dry-run" in sys.argv
+        if len(args) >= 2 and args[1] in ('on', 'off'):
+            value = args[1] == 'on'
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+        elif len(args) >= 2:
+            candidate = Path(args[1])
+            if candidate.is_dir():
+                value = None
+                directory = candidate.resolve()
+            else:
+                from diff_utils import RED, RESET
+                print(f"{RED}Invalid value: {args[1]}. Use 'on' or 'off'.{RESET}")
+                sys.exit(1)
+        else:
+            value = None
+            directory = Path(".").resolve()
+        success = duplicate_check_command(value, directory, dry_run)
+        sys.exit(0 if success else 1)
+
     # tpack install [dir] or tpack install <github_url>
     if len(args) >= 1 and args[0] == 'install':
         dry_run = "--dry-run" in sys.argv
@@ -1545,7 +1612,7 @@ def main():
     if len(args) >= 1 and args[0] == 'generate':
         if len(args) < 2:
             print("Usage: tpack generate <type> [directory]")
-            print("Types: manifest, version, readme, shields, duplicate-check, install-block, workflow-auto-release")
+            print("Types: manifest, version, readme, shields, install-block, workflow-auto-release")
             sys.exit(1)
         gen_type = args[1]
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
@@ -1557,7 +1624,6 @@ def main():
             "version": "generate_version.py",
             "readme": "generate_readme.py",
             "shields": "generate_shields.py",
-            "duplicate-check": "generate_duplicate_check.py",
             "install-block": "generate_install_block.py",
             "workflow-auto-release": "generate_workflow_auto_release.py",
         }
@@ -1593,14 +1659,12 @@ def main():
     no_version = "--no-version" in sys.argv
     no_readme = "--no-readme" in sys.argv
     no_shields = "--no-shields" in sys.argv
-    no_duplicate_check = "--no-duplicate-check" in sys.argv
 
     # Determine which generators to run (config defaults, overridden by --no-* flags)
     run_manifest = cfg_defaults.get("manifest", True) and not no_manifest
     run_version = cfg_defaults.get("version", True) and not no_version
     run_readme = cfg_defaults.get("readme", True) and not no_readme
     run_shields = cfg_defaults.get("shields", False) and not no_shields
-    run_duplicate_check = cfg_defaults.get("duplicateCheck", False) and not no_duplicate_check
 
     # Get directories from arguments or use current directory
     package_dirs = [Path(d).resolve() for d in sys.argv[1:] if not d.startswith('-')]
@@ -1614,7 +1678,7 @@ def main():
     total_count = len(package_dirs)
 
     for package_dir in package_dirs:
-        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields, run_duplicate_check):
+        if process_directory(package_dir, dry_run, verbose, run_manifest, run_version, run_readme, run_shields):
             success_count += 1
 
     from diff_utils import GREEN, DIM, RESET

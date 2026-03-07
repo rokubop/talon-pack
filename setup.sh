@@ -124,21 +124,22 @@ _tpack() {
   local -a commands=(
     'info' 'patch' 'minor' 'major' 'version'
     'install' 'update' 'outdated' 'sync'
-    'status' 'pip' 'generate' 'help'
+    'status' 'duplicate-check' 'pip' 'generate' 'help'
   )
   local -a generate_types=(
     'manifest' 'version' 'readme' 'shields'
-    'duplicate-check' 'install-block' 'workflow-auto-release'
+    'install-block' 'workflow-auto-release'
   )
   local -a pip_cmds=('add' 'remove' 'list')
   local -a status_values=(
     'reference' 'prototype' 'experimental' 'preview'
     'stable' 'deprecated' 'archived'
   )
+  local -a duplicate_check_values=('on' 'off')
   local -a flags=(
     '--dry-run' '--yes' '-y' '-v' '--verbose'
     '--no-manifest' '--no-version' '--no-readme'
-    '--no-shields' '--no-duplicate-check' '--help'
+    '--no-shields' '--help'
   )
 
   if (( CURRENT == 2 )); then
@@ -149,6 +150,7 @@ _tpack() {
       generate) _describe 'type' generate_types ;;
       pip) _describe 'pip command' pip_cmds ;;
       status) _describe 'status' status_values ;;
+      duplicate-check) _describe 'value' duplicate_check_values ;;
     esac
   fi
 }
@@ -165,11 +167,12 @@ _tpack() {
   local cur prev commands generate_types pip_cmds flags
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info patch minor major version install update outdated sync status pip generate help"
-  generate_types="manifest version readme shields duplicate-check install-block workflow-auto-release"
+  commands="info patch minor major version install update outdated sync status duplicate-check pip generate help"
+  generate_types="manifest version readme shields install-block workflow-auto-release"
   pip_cmds="add remove list"
   status_values="reference prototype experimental preview stable deprecated archived"
-  flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"
+  duplicate_check_values="on off"
+  flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --help"
 
   if (( COMP_CWORD == 1 )); then
     COMPREPLY=($(compgen -W "$commands $flags" -- "$cur"))
@@ -178,6 +181,7 @@ _tpack() {
       generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
       pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
       status) COMPREPLY=($(compgen -W "$status_values" -- "$cur")) ;;
+      duplicate-check) COMPREPLY=($(compgen -W "$duplicate_check_values" -- "$cur")) ;;
     esac
   fi
 }
