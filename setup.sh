@@ -124,13 +124,17 @@ _tpack() {
   local -a commands=(
     'info' 'patch' 'minor' 'major' 'version'
     'install' 'update' 'outdated' 'sync'
-    'pip' 'generate' 'help'
+    'status' 'pip' 'generate' 'help'
   )
   local -a generate_types=(
     'manifest' 'version' 'readme' 'shields'
     'duplicate-check' 'install-block'
   )
   local -a pip_cmds=('add' 'remove' 'list')
+  local -a status_values=(
+    'reference' 'prototype' 'experimental' 'preview'
+    'stable' 'deprecated' 'archived'
+  )
   local -a flags=(
     '--dry-run' '--yes' '-y' '-v' '--verbose'
     '--no-manifest' '--no-version' '--no-readme'
@@ -144,6 +148,7 @@ _tpack() {
     case ${words[2]} in
       generate) _describe 'type' generate_types ;;
       pip) _describe 'pip command' pip_cmds ;;
+      status) _describe 'status' status_values ;;
     esac
   fi
 }
@@ -160,9 +165,10 @@ _tpack() {
   local cur prev commands generate_types pip_cmds flags
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info patch minor major version install update outdated sync pip generate help"
+  commands="info patch minor major version install update outdated sync status pip generate help"
   generate_types="manifest version readme shields duplicate-check install-block"
   pip_cmds="add remove list"
+  status_values="reference prototype experimental preview stable deprecated archived"
   flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"
 
   if (( COMP_CWORD == 1 )); then
@@ -171,6 +177,7 @@ _tpack() {
     case "$prev" in
       generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
       pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
+      status) COMPREPLY=($(compgen -W "$status_values" -- "$cur")) ;;
     esac
   fi
 }
@@ -218,6 +225,43 @@ main() {
     fi
 
     if $has_alias && $has_completion; then
+        # Check if tab completion is outdated
+        local current_completion new_completion
+        current_completion="$(sed -n '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/p' "$rc_file")"
+        if [[ "$shell" == "zsh" ]]; then
+            new_completion="$(zsh_completion | sed -n '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/p')"
+        else
+            new_completion="$(bash_completion | sed -n '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/p')"
+        fi
+
+        if [[ "$current_completion" != "$new_completion" ]]; then
+            warn "Tab completion is outdated."
+            echo ""
+            echo -e "Changes:"
+            echo "────────────────────────────────────"
+            diff --color=always <(echo "$current_completion") <(echo "$new_completion") || true
+            echo "────────────────────────────────────"
+            echo ""
+            if confirm "Update tab completion?"; then
+                # Remove old completion block and add new one
+                sed -i '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/d' "$rc_file"
+                if [[ "$shell" == "zsh" ]]; then
+                    zsh_completion >> "$rc_file"
+                else
+                    bash_completion >> "$rc_file"
+                fi
+                success "Tab completion updated."
+                echo ""
+                info "Run this to activate:"
+                echo ""
+                echo -e "  ${BOLD}source $rc_file${NC}"
+            else
+                info "Update skipped."
+            fi
+            echo ""
+            return 0
+        fi
+
         success "Already set up! Alias and tab completion found in $rc_file"
         echo ""
         return 0

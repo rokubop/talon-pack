@@ -26,6 +26,52 @@ if (-not (Test-Path $tpackScript)) {
     Write-Warn "tpack.py not found at '$tpackScript'"
 }
 
+function Get-CompletionBlock {
+    @'
+# --- tpack tab completion ---
+Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $commands = @(
+        'info', 'patch', 'minor', 'major', 'version',
+        'install', 'update', 'outdated', 'sync',
+        'status', 'pip', 'generate', 'help'
+    )
+    $generateTypes = @(
+        'manifest', 'version', 'readme', 'shields',
+        'duplicate-check', 'install-block'
+    )
+    $pipCmds = @('add', 'remove', 'list')
+    $statusValues = @(
+        'reference', 'prototype', 'experimental', 'preview',
+        'stable', 'deprecated', 'archived'
+    )
+    $flags = @(
+        '--dry-run', '--yes', '-y', '-v', '--verbose',
+        '--no-manifest', '--no-version', '--no-readme',
+        '--no-shields', '--no-duplicate-check', '--help'
+    )
+
+    $tokens = $commandAst.ToString() -split '\s+'
+    $position = $tokens.Count
+
+    if ($position -le 1 -or ($position -eq 2 -and $wordToComplete)) {
+        ($commands + $flags) | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'generate') {
+        $generateTypes | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'pip') {
+        $pipCmds | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'status') {
+        $statusValues | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    }
+}
+# --- end tpack tab completion ---
+'@
+}
+
 $profilePath = $PROFILE
 
 Write-Host ""
@@ -46,6 +92,47 @@ if (Test-Path $profilePath) {
 }
 
 if ($hasFunction -and $hasCompletion) {
+    # Check if tab completion is outdated
+    $newCompletionBlock = Get-CompletionBlock
+
+    # Extract current completion block from profile
+    $profileContent = Get-Content $profilePath -Raw
+    $currentMatch = [regex]::Match($profileContent, '(?s)# --- tpack tab completion ---.*?# --- end tpack tab completion ---')
+    $currentCompletionBlock = $currentMatch.Value
+
+    if ($currentCompletionBlock -ne $newCompletionBlock) {
+        Write-Warn "Tab completion is outdated."
+        Write-Host ""
+        Write-Host "Changes:"
+        Write-Host ([string]::new([char]0x2500, 36))
+        $oldLines = $currentCompletionBlock -split "`n"
+        $newLines = $newCompletionBlock -split "`n"
+        $diff = Compare-Object -ReferenceObject $oldLines -DifferenceObject $newLines
+        foreach ($d in $diff) {
+            if ($d.SideIndicator -eq '=>') {
+                Write-Host "+ $($d.InputObject)" -ForegroundColor Green
+            } elseif ($d.SideIndicator -eq '<=') {
+                Write-Host "- $($d.InputObject)" -ForegroundColor Red
+            }
+        }
+        Write-Host ([string]::new([char]0x2500, 36))
+        Write-Host ""
+
+        if (Confirm-Prompt "Update tab completion?") {
+            $updatedContent = $profileContent.Replace($currentCompletionBlock, $newCompletionBlock)
+            Set-Content -Path $profilePath -Value $updatedContent -NoNewline
+            Write-Success "Tab completion updated."
+            Write-Host ""
+            Write-Info "Run this to activate:"
+            Write-Host ""
+            Write-Host "  . `$PROFILE" -ForegroundColor White
+        } else {
+            Write-Info "Update skipped."
+        }
+        Write-Host ""
+        return
+    }
+
     Write-Success "Already set up! Function and tab completion found in $profilePath"
     Write-Host ""
     return
@@ -98,44 +185,7 @@ if ($hasCompletion) {
     Write-Host ""
 } else {
     if (Confirm-Prompt "Add tab completion?") {
-        $completionBlock = @'
-
-# --- tpack tab completion ---
-Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    $commands = @(
-        'info', 'patch', 'minor', 'major', 'version',
-        'install', 'update', 'outdated', 'sync',
-        'pip', 'generate', 'help'
-    )
-    $generateTypes = @(
-        'manifest', 'version', 'readme', 'shields',
-        'duplicate-check', 'install-block'
-    )
-    $pipCmds = @('add', 'remove', 'list')
-    $flags = @(
-        '--dry-run', '--yes', '-y', '-v', '--verbose',
-        '--no-manifest', '--no-version', '--no-readme',
-        '--no-shields', '--no-duplicate-check', '--help'
-    )
-
-    $tokens = $commandAst.ToString() -split '\s+'
-    $position = $tokens.Count
-
-    if ($position -le 1 -or ($position -eq 2 -and $wordToComplete)) {
-        ($commands + $flags) | Where-Object { $_ -like "$wordToComplete*" } |
-            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
-    } elseif ($tokens[1] -eq 'generate') {
-        $generateTypes | Where-Object { $_ -like "$wordToComplete*" } |
-            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
-    } elseif ($tokens[1] -eq 'pip') {
-        $pipCmds | Where-Object { $_ -like "$wordToComplete*" } |
-            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
-    }
-}
-# --- end tpack tab completion ---
-'@
-        Add-Content -Path $profilePath -Value $completionBlock
+        Add-Content -Path $profilePath -Value "`n$(Get-CompletionBlock)"
         Write-Success "Tab completion added."
     }
     Write-Host ""

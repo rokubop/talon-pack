@@ -15,7 +15,9 @@ Usage:
   tpack outdated [dir]             Check for newer versions (local vs remote)
   tpack sync [dep] [dir]           Update dependency min_version to installed version
   tpack sync [dir]                 Update all dependencies to installed versions
-  tpack pip add <pkg> [dir]         Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
+  tpack status [dir]               Show current status
+  tpack status <value> [dir]       Set status (experimental, preview, stable, etc.)
+  tpack pip add <pkg> [dir]        Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
   tpack generate <type> [dir]      Generate a specific file
@@ -117,6 +119,71 @@ def version_command(bump_type: str, directory: Path, dry_run: bool = False) -> b
                 f.write(new_content)
 
             # Update shields if not explicitly disabled (version badge needs updating)
+            if manifest.get('_generatorShields', True):
+                readme_path = directory / "README.md"
+                if readme_path.exists():
+                    run_generator("generate_shields.py", str(directory))
+
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+VALID_STATUSES = [
+    "reference", "prototype", "experimental", "preview",
+    "stable", "deprecated", "archived",
+]
+
+
+def status_command(new_status: str | None, directory: Path, dry_run: bool = False) -> bool:
+    """Show or update the package status in manifest.json."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            old_content = f.read()
+            manifest = json.loads(old_content)
+
+        current_status = manifest.get('status', '')
+
+        # Show current status
+        if new_status is None:
+            name = manifest.get('name', directory.name)
+            if current_status:
+                print(f"{name}: {GREEN}{current_status}{RESET}")
+            else:
+                print(f"{name}: {DIM}(no status set){RESET}")
+            print(f"\nValid statuses: {', '.join(VALID_STATUSES)}")
+            return True
+
+        # Warn if non-standard status
+        if new_status not in VALID_STATUSES:
+            print(f"{YELLOW}Warning: '{new_status}' is not a standard status.{RESET}")
+            print(f"Standard statuses: {', '.join(VALID_STATUSES)}")
+
+        if current_status == new_status:
+            print(f"Status already set to '{new_status}'")
+            return True
+
+        manifest['status'] = new_status
+        new_content = json.dumps(manifest, indent=2)
+
+        print(f"\n{CYAN}{directory.name}/{RESET}")
+        has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+        if has_changes:
+            print(format_diff_output(diff_output))
+
+        if not dry_run:
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+
+            # Update shields if not explicitly disabled (status badge needs updating)
             if manifest.get('_generatorShields', True):
                 readme_path = directory / "README.md"
                 if readme_path.exists():
@@ -1381,6 +1448,28 @@ def main():
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
         dry_run = "--dry-run" in sys.argv
         success = version_command(bump_type, directory, dry_run)
+        sys.exit(0 if success else 1)
+
+    # tpack status [directory]
+    # tpack status <value> [directory]
+    if len(args) >= 1 and args[0] == 'status':
+        dry_run = "--dry-run" in sys.argv
+        if len(args) >= 2 and args[1] in VALID_STATUSES:
+            new_status = args[1]
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+        elif len(args) >= 2:
+            # Could be a directory or a non-standard status
+            candidate = Path(args[1])
+            if candidate.is_dir():
+                new_status = None
+                directory = candidate.resolve()
+            else:
+                new_status = args[1]
+                directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+        else:
+            new_status = None
+            directory = Path(".").resolve()
+        success = status_command(new_status, directory, dry_run)
         sys.exit(0 if success else 1)
 
     # tpack install [dir] or tpack install <github_url>
