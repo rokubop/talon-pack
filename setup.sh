@@ -128,7 +128,7 @@ _tpack() {
   )
   local -a generate_types=(
     'manifest' 'version' 'readme' 'shields'
-    'duplicate-check' 'install-block'
+    'duplicate-check' 'install-block' 'workflow-auto-release'
   )
   local -a pip_cmds=('add' 'remove' 'list')
   local -a status_values=(
@@ -166,7 +166,7 @@ _tpack() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   commands="info patch minor major version install update outdated sync status pip generate help"
-  generate_types="manifest version readme shields duplicate-check install-block"
+  generate_types="manifest version readme shields duplicate-check install-block workflow-auto-release"
   pip_cmds="add remove list"
   status_values="reference prototype experimental preview stable deprecated archived"
   flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"

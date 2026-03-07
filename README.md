@@ -34,6 +34,7 @@ tpack generate <type> [dir]    # Generate a specific file
   shields                      #   Generate shield badges
   duplicate-check              #   Generate _duplicate_check.py
   install-block                #   Generate install block (outputs to console)
+  workflow-auto-release        #   Generate .github/workflows/release.yml
 tpack --dry-run                # Preview changes without writing files
 tpack --yes, -y                # Skip confirmation prompts
 tpack -v, --verbose            # Show detailed output (default: show only changes)

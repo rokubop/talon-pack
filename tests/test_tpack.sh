@@ -230,6 +230,11 @@ run_test pass "generate manifest succeeds" tpack generate manifest "$WORKDIR"
 run_test pass "generate version succeeds" tpack generate version "$WORKDIR"
 run_test pass "generate readme succeeds" tpack generate readme "$WORKDIR"
 run_test pass "generate install-block succeeds" tpack generate install-block "$WORKDIR"
+run_test pass "generate workflow-auto-release succeeds" tpack generate workflow-auto-release "$WORKDIR" --force
+assert_file_exists "release.yml created" "$WORKDIR/.github/workflows/release.yml"
+assert_file_contains "release.yml has version check" "$WORKDIR/.github/workflows/release.yml" "manifest.json"
+# Running again should be idempotent (already up to date)
+run_test pass "generate workflow-auto-release idempotent" tpack generate workflow-auto-release "$WORKDIR" --force
 
 # --- Regenerate (idempotent) ---
 echo ""
@@ -256,6 +261,55 @@ echo "error cases:"
 run_test fail "generate unknown type fails" tpack generate badtype "$WORKDIR"
 
 cleanup_workdir "$WORKDIR"
+
+# --- Workflow Auto-Release Visibility Checks ---
+echo ""
+echo "workflow-auto-release visibility checks:"
+
+# No github URL in manifest -> should fail without --force
+WORKDIR_VIS="$(setup_workdir)"
+tpack --yes "$WORKDIR_VIS" > /dev/null 2>&1
+# Remove github field to simulate no URL
+"$PYTHON" -c "
+import json
+p = '$WORKDIR_VIS/manifest.json'
+with open(p) as f: d = json.load(f)
+d.pop('github', None)
+with open(p, 'w') as f: json.dump(d, f, indent=2)
+"
+run_test fail "no github URL blocks without --force" tpack generate workflow-auto-release "$WORKDIR_VIS"
+assert_file_not_exists "release.yml not created without --force" "$WORKDIR_VIS/.github/workflows/release.yml"
+run_test pass "no github URL proceeds with --force" tpack generate workflow-auto-release "$WORKDIR_VIS" --force
+assert_file_exists "release.yml created with --force" "$WORKDIR_VIS/.github/workflows/release.yml"
+cleanup_workdir "$WORKDIR_VIS"
+
+# Public repo URL -> should succeed without --force
+WORKDIR_PUB="$(setup_workdir)"
+tpack --yes "$WORKDIR_PUB" > /dev/null 2>&1
+"$PYTHON" -c "
+import json
+p = '$WORKDIR_PUB/manifest.json'
+with open(p) as f: d = json.load(f)
+d['github'] = 'https://github.com/rokubop/talon-pack'
+with open(p, 'w') as f: json.dump(d, f, indent=2)
+"
+run_test pass "public repo succeeds without --force" tpack generate workflow-auto-release "$WORKDIR_PUB"
+assert_file_exists "release.yml created for public repo" "$WORKDIR_PUB/.github/workflows/release.yml"
+cleanup_workdir "$WORKDIR_PUB"
+
+# Dry-run should not create file
+WORKDIR_DRY="$(setup_workdir)"
+tpack --yes "$WORKDIR_DRY" > /dev/null 2>&1
+"$PYTHON" -c "
+import json
+p = '$WORKDIR_DRY/manifest.json'
+with open(p) as f: d = json.load(f)
+d['github'] = 'https://github.com/rokubop/talon-pack'
+with open(p, 'w') as f: json.dump(d, f, indent=2)
+"
+run_test pass "workflow-auto-release dry-run succeeds" tpack generate workflow-auto-release "$WORKDIR_DRY" --dry-run
+assert_file_not_exists "release.yml not created on dry-run" "$WORKDIR_DRY/.github/workflows/release.yml"
+cleanup_workdir "$WORKDIR_DRY"
 
 # --- Setup Script (bash) ---
 echo ""

@@ -38,7 +38,7 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     )
     $generateTypes = @(
         'manifest', 'version', 'readme', 'shields',
-        'duplicate-check', 'install-block'
+        'duplicate-check', 'install-block', 'workflow-auto-release'
     )
     $pipCmds = @('add', 'remove', 'list')
     $statusValues = @(

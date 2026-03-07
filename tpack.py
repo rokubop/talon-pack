@@ -27,6 +27,7 @@ Usage:
     shields                        Generate shield badges
     duplicate-check                Generate _duplicate_check.py
     install-block                  Generate install block (outputs to console)
+    workflow-auto-release          Generate .github/workflows/release.yml
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
   tpack -v, --verbose            Show detailed output (default: show only changes)
@@ -1544,7 +1545,7 @@ def main():
     if len(args) >= 1 and args[0] == 'generate':
         if len(args) < 2:
             print("Usage: tpack generate <type> [directory]")
-            print("Types: manifest, version, readme, shields, duplicate-check, install-block")
+            print("Types: manifest, version, readme, shields, duplicate-check, install-block, workflow-auto-release")
             sys.exit(1)
         gen_type = args[1]
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
@@ -1558,6 +1559,7 @@ def main():
             "shields": "generate_shields.py",
             "duplicate-check": "generate_duplicate_check.py",
             "install-block": "generate_install_block.py",
+            "workflow-auto-release": "generate_workflow_auto_release.py",
         }
 
         if gen_type not in gen_map:
