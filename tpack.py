@@ -214,6 +214,7 @@ def duplicate_check_command(value: bool | None, directory: Path, dry_run: bool =
             name = manifest.get('name', directory.name)
             state = f"{GREEN}on{RESET}" if current else f"{DIM}off{RESET}"
             print(f"{name}: duplicate-check {state}")
+            print(f"\nUsage: tpack duplicate-check on|off")
             return True
 
         if current == value:

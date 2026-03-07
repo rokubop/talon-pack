@@ -1620,6 +1620,10 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                 "_generatorFrozenFields": existing_manifest_data.get("_generatorFrozenFields", [])
             })
 
+            # Preserve optional generator fields if present
+            if "_generatorDuplicateCheck" in existing_manifest_data:
+                new_manifest_data["_generatorDuplicateCheck"] = existing_manifest_data["_generatorDuplicateCheck"]
+
             # Apply frozen fields if any are specified
             frozen_fields = set(new_manifest_data["_generatorFrozenFields"])
             if frozen_fields:
