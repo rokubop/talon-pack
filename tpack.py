@@ -15,7 +15,7 @@ Usage:
   tpack outdated [dir]             Check for newer versions (local vs remote)
   tpack sync [dep] [dir]           Update dependency min_version to installed version
   tpack sync [dir]                 Update all dependencies to installed versions
-  tpack pip <pkg> [dir]            Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
+  tpack pip add <pkg> [dir]         Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
   tpack generate <type> [dir]      Generate a specific file
@@ -1180,7 +1180,7 @@ def pip_command(action: str, package_spec: str | None, directory: Path, dry_run:
 
     else:
         print(f"{RED}Unknown pip action: {action}{RESET}")
-        print(f"Usage: tpack pip <package>          Add pip dependency")
+        print(f"Usage: tpack pip add <package>       Add pip dependency")
         print(f"       tpack pip remove <package>   Remove pip dependency")
         print(f"       tpack pip list               List pip dependencies")
         return False
@@ -1424,7 +1424,7 @@ def main():
         success = sync_command(dep_name, directory, dry_run)
         sys.exit(0 if success else 1)
 
-    # tpack pip <package> [directory]
+    # tpack pip add <package> [directory]
     # tpack pip remove <package> [directory]
     # tpack pip list [directory]
     if len(args) >= 1 and args[0] == 'pip':
@@ -1436,12 +1436,16 @@ def main():
         elif len(args) >= 2 and args[1] == 'list':
             directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
             success = pip_command("list", None, directory, dry_run)
+        elif len(args) >= 3 and args[1] == 'add':
+            package_spec = args[2]
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = pip_command("add", package_spec, directory, dry_run)
         elif len(args) >= 2:
             package_spec = args[1]
             directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
             success = pip_command("add", package_spec, directory, dry_run)
         else:
-            print("Usage: tpack pip <package>          Add pip dependency")
+            print("Usage: tpack pip add <package>       Add pip dependency")
             print("       tpack pip remove <package>   Remove pip dependency")
             print("       tpack pip list               List pip dependencies")
             sys.exit(1)

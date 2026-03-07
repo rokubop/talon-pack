@@ -130,7 +130,7 @@ _tpack() {
     'manifest' 'version' 'readme' 'shields'
     'duplicate-check' 'install-block'
   )
-  local -a pip_cmds=('remove' 'list')
+  local -a pip_cmds=('add' 'remove' 'list')
   local -a flags=(
     '--dry-run' '--yes' '-y' '-v' '--verbose'
     '--no-manifest' '--no-version' '--no-readme'
@@ -162,7 +162,7 @@ _tpack() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   commands="info patch minor major version install update outdated sync pip generate help"
   generate_types="manifest version readme shields duplicate-check install-block"
-  pip_cmds="remove list"
+  pip_cmds="add remove list"
   flags="--dry-run --yes -y -v --verbose --no-manifest --no-version --no-readme --no-shields --no-duplicate-check --help"
 
   if (( COMP_CWORD == 1 )); then

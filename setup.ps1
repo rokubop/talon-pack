@@ -112,7 +112,7 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
         'manifest', 'version', 'readme', 'shields',
         'duplicate-check', 'install-block'
     )
-    $pipCmds = @('remove', 'list')
+    $pipCmds = @('add', 'remove', 'list')
     $flags = @(
         '--dry-run', '--yes', '-y', '-v', '--verbose',
         '--no-manifest', '--no-version', '--no-readme',
