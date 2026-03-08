@@ -21,7 +21,7 @@
   "depends": {},
   "validateDependencies": false,
   "_generator": "talon-pack",
-  "_generatorVersion": "3.2.0",
+  "_generatorVersion": "3.2.1",
   "_generatorRequiresVersionAction": false,
   "_generatorStrictNamespace": true,
   "_generatorFrozenFields": []

@@ -77,6 +77,43 @@ CONFIG_PATH = SCRIPT_DIR / "tpack.config.json"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+def check_local_changes(directory: Path, include_commits_ahead: bool = False) -> str | None:
+    """Check if the git repo has uncommitted changes (and optionally commits ahead of remote).
+    Returns a warning message string, or None if clean."""
+    import subprocess
+    git_dir = directory / ".git"
+    if not git_dir.exists():
+        return None
+
+    warnings = []
+    try:
+        # Check for uncommitted changes
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, cwd=directory
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            lines = result.stdout.strip().splitlines()
+            warnings.append(f"{len(lines)} uncommitted change{'s' if len(lines) != 1 else ''}")
+
+        # Check for commits ahead of remote
+        if include_commits_ahead:
+            result = subprocess.run(
+                ["git", "rev-list", "--count", "@{u}..HEAD"],
+                capture_output=True, text=True, cwd=directory
+            )
+            if result.returncode == 0:
+                count = int(result.stdout.strip())
+                if count > 0:
+                    warnings.append(f"{count} commit{'s' if count != 1 else ''} ahead of remote")
+    except Exception:
+        pass
+
+    if warnings:
+        return ", ".join(warnings)
+    return None
+
+
 def bump_version(version: str, bump_type: str) -> str:
     """Bump a semver version string."""
     major, minor, patch = map(int, version.split('.'))
@@ -477,6 +514,8 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
     manifest_path = directory / "manifest.json"
     if not manifest_path.exists():
         print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        if directory != Path(".").resolve():
+            print(f"{YELLOW}Did you mean: tpack outdated --search {directory.name}{RESET}")
         return False
 
     try:
@@ -532,7 +571,7 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
             if remote_parts > local_parts:
                 self_status = f"{YELLOW}update available{RESET}"
             else:
-                self_status = f"{GREEN}up to date{RESET}"
+                self_status = f"{CYAN}unpublished{RESET}"
         else:
             self_status = f"{GREEN}up to date{RESET}"
         print(f"  {pkg_name}  {local_version} (local)  {self_remote or '-'} (remote)  {self_status}")
@@ -593,6 +632,14 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
                 print(f"  Run {GREEN}tpack sync{dir_hint}{RESET} to update min_version in manifest.")
         else:
             print(f"\n{DIM}All packages are up to date.{RESET}")
+
+        # Check for local changes that may need a version bump (only if version not already bumped)
+        version_already_bumped = self_remote and [int(x) for x in local_version.split('.')] > [int(x) for x in self_remote.split('.')]
+        if not version_already_bumped:
+            local_changes = check_local_changes(directory, include_commits_ahead=True)
+            if local_changes:
+                print(f"  {YELLOW}Local changes detected: {local_changes}.{RESET}")
+                print(f"  {YELLOW}Consider running {GREEN}tpack patch{YELLOW}, {GREEN}tpack minor{YELLOW}, or {GREEN}tpack major{YELLOW} before releasing.{RESET}")
 
         print()
         return True
@@ -1597,6 +1644,7 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
 
         if verbose:
             print(f"\nAll generators completed for {package_dir}")
+
         return True
     finally:
         # Clean up temp manifest file
@@ -1630,6 +1678,27 @@ def main():
             search_dir = str(Path(search_dir_raw).resolve())
             break
 
+    # Validate flags
+    known_flags = {
+        '--dry-run', '--yes', '-y', '-v', '--verbose', '--search',
+        '--help', '-h', '--version', '-V', '--force',
+        '--skip-version-check',
+    }
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg.startswith('-') and arg not in known_flags:
+            from diff_utils import RED, YELLOW, RESET
+            print(f"{RED}Unknown flag: {arg}{RESET}")
+            # Suggest if it looks like a subcommand
+            subcommands = [
+                'info', 'patch', 'minor', 'major', 'version',
+                'install', 'update', 'outdated', 'sync', 'release',
+                'status', 'duplicate-check', 'pip', 'generate', 'help',
+            ]
+            bare = arg.lstrip('-')
+            if bare in subcommands:
+                print(f"{YELLOW}Did you mean: tpack {bare}{RESET}")
+            sys.exit(1)
+
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
     # Remove the --search value from args (it's not a flag, so it wasn't filtered)
     if search_dir:
@@ -1653,9 +1722,40 @@ def main():
             try:
                 with open(manifest_path, 'r', encoding='utf-8') as f:
                     manifest = json.load(f)
+                from diff_utils import YELLOW, GREEN, CYAN, DIM, RESET
                 name = manifest.get('name', directory.name)
                 version = manifest.get('version', 'unknown')
-                print(f"{name} v{version}")
+                github_url = manifest.get('github', '')
+
+                # Fetch remote version
+                remote_version = None
+                if github_url:
+                    print(f"{DIM}Checking remote version...{RESET}")
+                    remote_manifest = fetch_remote_manifest(github_url)
+                    if remote_manifest:
+                        remote_version = remote_manifest.get('version')
+
+                if remote_version:
+                    local_parts = [int(x) for x in version.split('.')]
+                    remote_parts = [int(x) for x in remote_version.split('.')]
+                    if local_parts > remote_parts:
+                        status = f"{CYAN}unpublished{RESET}"
+                    elif remote_parts > local_parts:
+                        status = f"{YELLOW}update available{RESET}"
+                    else:
+                        status = f"{GREEN}up to date{RESET}"
+                    print(f"{name}  {version} (local)  {remote_version} (remote)  {status}")
+                else:
+                    print(f"{name} v{version}")
+
+                # Only suggest bumping if version hasn't been bumped past remote
+                version_already_bumped = remote_version and [int(x) for x in version.split('.')] > [int(x) for x in remote_version.split('.')]
+                if not version_already_bumped:
+                    local_changes = check_local_changes(directory, include_commits_ahead=True)
+                    if local_changes:
+                        print(f"\n  {YELLOW}Local changes detected: {local_changes}.{RESET}")
+                        print(f"  {YELLOW}Consider running {GREEN}tpack patch{YELLOW}, {GREEN}tpack minor{YELLOW}, or {GREEN}tpack major{YELLOW}.{RESET}")
+
                 print(f"\nUsage: tpack major|minor|patch")
                 print(f"       tpack version major|minor|patch")
             except Exception as e:
