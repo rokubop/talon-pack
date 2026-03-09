@@ -420,6 +420,59 @@ echo ""
 echo "setup.sh:"
 run_test pass "setup.sh passes bash -n syntax check" bash -n "$TPACK_DIR/setup.sh"
 
+# --- Community Repo Detection ---
+echo ""
+echo "community repo detection:"
+
+# Create a fake community repo structure
+FAKE_COMMUNITY="$FAKE_TALON/user/community"
+mkdir -p "$FAKE_COMMUNITY/core"
+mkdir -p "$FAKE_COMMUNITY/apps"
+mkdir -p "$FAKE_COMMUNITY/lang"
+mkdir -p "$FAKE_COMMUNITY/plugin"
+mkdir -p "$FAKE_COMMUNITY/tags"
+touch "$FAKE_COMMUNITY/settings.talon"
+
+# Add a contributed action to the community repo
+cat > "$FAKE_COMMUNITY/core/sample_community.py" << 'COMMEOF'
+from talon import Module
+
+mod = Module()
+
+@mod.action_class
+class Actions:
+    def community_test_action():
+        """A community action"""
+        pass
+COMMEOF
+
+# Create a package that depends on the community action
+WORKDIR_COMM="$(setup_workdir)"
+cat > "$WORKDIR_COMM/uses_community.py" << 'USESEOF'
+from talon import actions
+
+def do_something():
+    actions.user.community_test_action()
+USESEOF
+
+run_test pass "tpack generates with community dep" tpack --yes "$WORKDIR_COMM"
+assert_file_contains "manifest detects community dependency" "$WORKDIR_COMM/manifest.json" '"community"'
+assert_file_contains "manifest has community github url" "$WORKDIR_COMM/manifest.json" 'talonhub/community'
+# Community deps should not have min_version
+run_test pass "manifest has no min_version for community" bash -c "! grep -A2 '\"community\"' '$WORKDIR_COMM/manifest.json' | grep -q 'min_version'"
+# deps command should show community as installed
+assert_output_contains "deps shows community dep" "community" tpack deps "$WORKDIR_COMM"
+assert_output_contains "deps shows community installed" "installed" tpack deps "$WORKDIR_COMM"
+# info command works with community dep
+run_test pass "info works with community dep" tpack info "$WORKDIR_COMM"
+# README should not show vunknown for community
+run_test pass "README has no vunknown for community" bash -c "! grep -q 'vunknown' '$WORKDIR_COMM/README.md'"
+# Regenerate is idempotent with community dep
+run_test pass "regenerate with community dep is idempotent" tpack --yes "$WORKDIR_COMM"
+
+cleanup_workdir "$WORKDIR_COMM"
+rm -rf "$FAKE_COMMUNITY"
+
 # ============================================================
 # Summary
 # ============================================================

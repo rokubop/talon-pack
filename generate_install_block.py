@@ -132,38 +132,41 @@ def generate_installation_markdown(manifest: dict) -> str:
         # Add direct dependencies
         if direct_deps:
             for dep_name, dep_info in direct_deps.items():
-                version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
+                version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
+                ver_str = f" (v{version}+)" if version else ""
                 if github:
-                    lines.append(f"- [**{dep_name}**]({github}) (v{version}+){plat}")
+                    lines.append(f"- [**{dep_name}**]({github}){ver_str}{plat}")
                 else:
-                    lines.append(f"- **{dep_name}** (v{version}+){plat}")
+                    lines.append(f"- **{dep_name}**{ver_str}{plat}")
 
         # Add transitive dependencies
         if transitive_deps:
             for dep_name, dep_info in transitive_deps.items():
-                version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
+                version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 required_by = dep_info.get('required_by', [])
                 plat = _platform_suffix(dep_info)
                 suffix = f" - required by {', '.join(required_by)}"
+                ver_str = f" (v{version}+)" if version else ""
                 if github:
-                    lines.append(f"- [**{dep_name}**]({github}) (v{version}+){plat}{suffix}")
+                    lines.append(f"- [**{dep_name}**]({github}){ver_str}{plat}{suffix}")
                 else:
-                    lines.append(f"- **{dep_name}** (v{version}+){plat}{suffix}")
+                    lines.append(f"- **{dep_name}**{ver_str}{plat}{suffix}")
 
         # Add peer dependencies
         if has_peer:
             for dep_name, dep_info in peer_dependencies.items():
-                version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
+                version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
                 suffix = " *(peer dependency)*"
+                ver_str = f" (v{version}+)" if version else ""
                 if github:
-                    lines.append(f"- [**{dep_name}**]({github}) (v{version}+){plat}{suffix}")
+                    lines.append(f"- [**{dep_name}**]({github}){ver_str}{plat}{suffix}")
                 else:
-                    lines.append(f"- **{dep_name}** (v{version}+){plat}{suffix}")
+                    lines.append(f"- **{dep_name}**{ver_str}{plat}{suffix}")
 
         # Add bundled dependencies
         if has_bundled:

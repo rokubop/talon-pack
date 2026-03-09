@@ -662,6 +662,31 @@ def entity_extract(folder_path: str) -> tuple[AllEntities, int, int]:
 
     return process_folder(folder_path)
 
+COMMUNITY_REPO_GITHUB = "https://github.com/talonhub/community"
+COMMUNITY_REPO_PACKAGE = "community"
+
+# Characteristic directories that identify a community Talon repo
+COMMUNITY_REPO_DIRS = {"core", "apps", "lang", "plugin", "tags"}
+
+def is_community_repo(path: str) -> bool:
+    """Detect if a directory is the Talon community repo by its structure."""
+    for d in COMMUNITY_REPO_DIRS:
+        if not os.path.isdir(os.path.join(path, d)):
+            return False
+    if not os.path.isfile(os.path.join(path, "settings.talon")):
+        return False
+    return True
+
+def detect_community_repos(talon_root: str, skip_dirs: set) -> list[str]:
+    """Scan talon directory for community repos. Returns list of paths."""
+    results = []
+    for root, dirs, files in os.walk(talon_root):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        if is_community_repo(root):
+            results.append(root)
+            dirs.clear()
+    return results
+
 def scan_all_manifests(talon_root: str) -> tuple:
     """
     Scan all manifest.json files in the talon directory tree.
@@ -743,7 +768,28 @@ def scan_all_manifests(talon_root: str) -> tuple:
                 # Silently skip malformed manifests
                 pass
 
-    return entity_to_package, manifest_count, package_deps_map, package_pip_deps_map
+    # Detect community repos (no manifest.json, detected by directory structure)
+    community_repos = detect_community_repos(talon_root, SKIP_DIRS)
+    community_count = 0
+    for community_path in community_repos:
+        try:
+            community_data, _, _ = entity_extract(community_path)
+            community_count += 1
+
+            # Index all contributed entities from the community repo
+            for entity_type in ENTITIES:
+                entities = getattr(community_data.contributes, entity_type)
+                for entity in entities:
+                    entity_to_package[entity] = {
+                        'package': COMMUNITY_REPO_PACKAGE,
+                        'min_version': '',
+                        'namespace': '',
+                        'github': COMMUNITY_REPO_GITHUB
+                    }
+        except Exception:
+            pass
+
+    return entity_to_package, manifest_count + community_count, package_deps_map, package_pip_deps_map
 
 def resolve_package_dependencies(depends: Entities, entity_to_package: dict, current_package: str = None) -> dict:
     """
@@ -769,10 +815,11 @@ def resolve_package_dependencies(depends: Entities, entity_to_package: dict, cur
                 # If we already have this package, keep existing min_version
                 # (in case multiple entities from same package)
                 if pkg_name not in package_deps:
-                    dep_info = {
-                        'min_version': pkg_version,
-                        'namespace': pkg_namespace
-                    }
+                    dep_info = {}
+                    if pkg_version:
+                        dep_info['min_version'] = pkg_version
+                    if pkg_namespace:
+                        dep_info['namespace'] = pkg_namespace
                     if pkg_github:
                         dep_info['github'] = pkg_github
                     pkg_platforms = pkg_info.get('platforms', [])
@@ -1353,7 +1400,7 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                         total_warnings += 1
 
                 # Capture scanned versions before overriding with user's specified versions
-                scanned_versions = {pkg_name: pkg_info['min_version'] for pkg_name, pkg_info in package_dependencies.items()}
+                scanned_versions = {pkg_name: pkg_info.get('min_version', '') for pkg_name, pkg_info in package_dependencies.items()}
 
                 # Preserve manually specified values from existing manifest
                 # Note: We only generate min_version, namespace, and github, but preserve
@@ -1454,7 +1501,11 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                 if package_dependencies:
                     print(f"Package dependencies:")
                     for pkg_name, pkg_info in package_dependencies.items():
-                        base_info = f"  - {pkg_name} ({pkg_info['min_version']}+)"
+                        min_ver = pkg_info.get('min_version', '')
+                        if min_ver:
+                            base_info = f"  - {pkg_name} ({min_ver}+)"
+                        else:
+                            base_info = f"  - {pkg_name}"
 
                         # Show transitive dependency annotation
                         required_by = pkg_info.get('required_by')
@@ -1462,11 +1513,11 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                             base_info += f" (required by {', '.join(required_by)})"
 
                         # Check if workspace version differs from min_version requirement
-                        if pkg_name in scanned_versions and scanned_versions[pkg_name] != pkg_info['min_version']:
+                        if min_ver and pkg_name in scanned_versions and scanned_versions[pkg_name] != min_ver:
                             try:
                                 # Compare versions (works for semver x.y.z format)
                                 scanned_parts = [int(x) for x in scanned_versions[pkg_name].split('.')]
-                                current_parts = [int(x) for x in pkg_info['min_version'].split('.')]
+                                current_parts = [int(x) for x in min_ver.split('.')]
                                 if scanned_parts > current_parts:
                                     base_info += f" (workspace has {scanned_versions[pkg_name]})"
                                 elif scanned_parts < current_parts:
@@ -1535,12 +1586,13 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                 # Non-verbose: still show version warnings
                 from diff_utils import status_warning
                 for pkg_name, pkg_info in package_dependencies.items():
-                    if pkg_name in scanned_versions and scanned_versions[pkg_name] != pkg_info['min_version']:
+                    min_ver = pkg_info.get('min_version', '')
+                    if min_ver and pkg_name in scanned_versions and scanned_versions[pkg_name] != min_ver:
                         try:
                             scanned_parts = [int(x) for x in scanned_versions[pkg_name].split('.')]
-                            current_parts = [int(x) for x in pkg_info['min_version'].split('.')]
+                            current_parts = [int(x) for x in min_ver.split('.')]
                             if scanned_parts < current_parts:
-                                print(status_warning(f"WARNING: {pkg_name} workspace has older version {scanned_versions[pkg_name]} (requires {pkg_info['min_version']}+)"))
+                                print(status_warning(f"WARNING: {pkg_name} workspace has older version {scanned_versions[pkg_name]} (requires {min_ver}+)"))
                         except (ValueError, AttributeError):
                             pass
 

@@ -560,9 +560,10 @@ def info_command(directory: Path) -> bool:
         if dependencies:
             print(f"\n{CYAN}Dependencies:{RESET}")
             for dep_name, dep_info in sorted(dependencies.items()):
-                min_ver = dep_info.get('min_version', dep_info.get('version', '?'))
+                min_ver = dep_info.get('min_version') or dep_info.get('version', '')
                 dep_github = dep_info.get('github', '')
-                print(f"  {dep_name} >={min_ver}")
+                ver_display = f" >={min_ver}" if min_ver else ""
+                print(f"  {dep_name}{ver_display}")
                 if dep_github:
                     print(f"    {DIM}{dep_github}{RESET}")
 
@@ -615,6 +616,7 @@ def find_talon_user_dir() -> str:
 
 def scan_installed_versions(talon_user_dir: str) -> dict:
     """Scan all manifest.json files and return {package_name: {"version": version, "path": path}}."""
+    from generate_manifest import is_community_repo, COMMUNITY_REPO_PACKAGE
     SKIP_DIRS = {
         'node_modules', '.git', '__pycache__', '.venv', 'venv',
         '.pytest_cache', '.mypy_cache', 'dist', 'build', '.vscode',
@@ -623,6 +625,10 @@ def scan_installed_versions(talon_user_dir: str) -> dict:
     versions = {}
     for root, dirs, files in os.walk(talon_user_dir):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        if is_community_repo(root):
+            versions[COMMUNITY_REPO_PACKAGE] = {"version": "", "path": root}
+            dirs.clear()
+            continue
         if 'manifest.json' in files:
             try:
                 with open(os.path.join(root, 'manifest.json'), 'r', encoding='utf-8') as f:
@@ -726,6 +732,8 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
                 if installed_ver is None:
                     status = f"{RED}not installed{RESET}"
                     has_updates = True
+                elif not installed_ver or not manifest_ver:
+                    status = f"{GREEN}installed{RESET}" if installed_ver is not None else f"{RED}not installed{RESET}"
                 else:
                     installed_parts = [int(x) for x in installed_ver.split('.')]
                     needs_update = remote_ver and [int(x) for x in remote_ver.split('.')] > installed_parts
@@ -826,7 +834,7 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                 return
             print(f"\n  {CYAN}{title}:{RESET}")
             for dep_name, dep_info in sorted(deps.items()):
-                version = dep_info.get('min_version') or dep_info.get('version', '?')
+                version = dep_info.get('min_version') or dep_info.get('version', '')
                 required_by = dep_info.get('required_by', [])
                 platforms = dep_info.get('platforms', [])
 
@@ -834,12 +842,17 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                     status = f"{DIM}bundled{RESET}"
                 elif dep_name in installed:
                     inst_ver = installed[dep_name]["version"]
-                    inst_parts = [int(x) for x in inst_ver.split('.')]
-                    min_parts = [int(x) for x in version.split('.')] if version != '?' else [0]
-                    if inst_parts >= min_parts:
+                    if version and inst_ver:
+                        inst_parts = [int(x) for x in inst_ver.split('.')]
+                        min_parts = [int(x) for x in version.split('.')]
+                        if inst_parts >= min_parts:
+                            status = f"{GREEN}{inst_ver} installed{RESET}"
+                        else:
+                            status = f"{YELLOW}{inst_ver} installed (needs >={version}){RESET}"
+                    elif inst_ver:
                         status = f"{GREEN}{inst_ver} installed{RESET}"
                     else:
-                        status = f"{YELLOW}{inst_ver} installed (needs >={version}){RESET}"
+                        status = f"{GREEN}installed{RESET}"
                 else:
                     status = f"{RED}not installed{RESET}"
 
@@ -851,7 +864,8 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                     suffix_parts.append(f"required by {', '.join(required_by)}")
                 suffix = f"  {DIM}({', '.join(suffix_parts)}){RESET}" if suffix_parts else ""
 
-                print(f"    {dep_name}  >={version}  {status}{suffix}")
+                ver_display = f">={version}" if version else ""
+                print(f"    {dep_name}  {ver_display}  {status}{suffix}")
 
         def print_pip_section(pip_deps):
             if not pip_deps:
@@ -1390,12 +1404,15 @@ def sync_command(dep_name: str | None, directory: Path, dry_run: bool = False, s
 
         for name in deps_to_update:
             dep_info = dependencies[name]
-            min_ver = dep_info.get('min_version', dep_info.get('version'))
+            min_ver = dep_info.get('min_version') or dep_info.get('version', '')
             installed_info = installed.get(name)
             installed_ver = installed_info["version"] if installed_info else None
 
             if installed_ver is None:
                 print(f"{YELLOW}{name}: not found locally, skipping{RESET}")
+                continue
+
+            if not installed_ver or not min_ver:
                 continue
 
             if min_ver == installed_ver:

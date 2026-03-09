@@ -272,6 +272,8 @@ def validate_dependencies():
             version_action_name = f"{{info.get('namespace')}}_version"
             github_url = info.get('github', '')
             version_str = info.get('min_version') or info.get('version')
+            if not version_str:
+                continue
             try:
                 version_action = actions
                 for part in version_action_name.split('.'):
