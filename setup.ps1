@@ -32,15 +32,18 @@ function Get-CompletionBlock {
 Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $commands = @(
-        'info', 'patch', 'minor', 'major', 'version',
+        'info', 'deps', 'patch', 'minor', 'major', 'version',
         'install', 'update', 'outdated', 'sync', 'release',
-        'status', 'duplicate-check', 'pip', 'generate', 'help'
+        'status', 'duplicate-check', 'platform', 'pip', 'peer', 'generate', 'help'
     )
     $generateTypes = @(
         'manifest', 'version', 'readme', 'shields',
-        'install-block', 'workflow-auto-release'
+        'install-block', 'install-block-tpack', 'workflow-auto-release'
     )
     $pipCmds = @('add', 'remove', 'list')
+    $peerCmds = @('add', 'remove', 'list')
+    $platformCmds = @('add', 'remove')
+    $platformValues = @('windows', 'mac', 'linux')
     $statusValues = @(
         'reference', 'prototype', 'experimental', 'preview',
         'stable', 'deprecated', 'archived'
@@ -62,11 +65,20 @@ Register-ArgumentCompleter -CommandName tpack -ScriptBlock {
     } elseif ($tokens[1] -eq 'pip') {
         $pipCmds | Where-Object { $_ -like "$wordToComplete*" } |
             ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'peer') {
+        $peerCmds | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
     } elseif ($tokens[1] -eq 'status') {
         $statusValues | Where-Object { $_ -like "$wordToComplete*" } |
             ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
     } elseif ($tokens[1] -eq 'duplicate-check') {
         $duplicateCheckValues | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'platform' -and $tokens.Count -le 3) {
+        $platformCmds | Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+    } elseif ($tokens[1] -eq 'platform' -and $tokens.Count -ge 3) {
+        $platformValues | Where-Object { $_ -like "$wordToComplete*" } |
             ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
     }
 }

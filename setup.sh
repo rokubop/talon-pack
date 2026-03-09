@@ -122,15 +122,18 @@ zsh_completion() {
 # --- tpack tab completion ---
 _tpack() {
   local -a commands=(
-    'info' 'patch' 'minor' 'major' 'version'
+    'info' 'deps' 'patch' 'minor' 'major' 'version'
     'install' 'update' 'outdated' 'sync' 'release'
-    'status' 'duplicate-check' 'pip' 'generate' 'help'
+    'status' 'duplicate-check' 'platform' 'pip' 'peer' 'generate' 'help'
   )
   local -a generate_types=(
     'manifest' 'version' 'readme' 'shields'
-    'install-block' 'workflow-auto-release'
+    'install-block' 'install-block-tpack' 'workflow-auto-release'
   )
   local -a pip_cmds=('add' 'remove' 'list')
+  local -a peer_cmds=('add' 'remove' 'list')
+  local -a platform_cmds=('add' 'remove')
+  local -a platform_values=('windows' 'mac' 'linux')
   local -a status_values=(
     'reference' 'prototype' 'experimental' 'preview'
     'stable' 'deprecated' 'archived'
@@ -147,8 +150,14 @@ _tpack() {
     case ${words[2]} in
       generate) _describe 'type' generate_types ;;
       pip) _describe 'pip command' pip_cmds ;;
+      peer) _describe 'peer command' peer_cmds ;;
       status) _describe 'status' status_values ;;
       duplicate-check) _describe 'value' duplicate_check_values ;;
+      platform) _describe 'platform command' platform_cmds ;;
+    esac
+  elif (( CURRENT == 4 )); then
+    case ${words[2]} in
+      platform) _describe 'platform' platform_values ;;
     esac
   fi
 }
@@ -165,9 +174,12 @@ _tpack() {
   local cur prev commands generate_types pip_cmds flags
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info patch minor major version install update outdated sync release status duplicate-check pip generate help"
-  generate_types="manifest version readme shields install-block workflow-auto-release"
+  commands="info deps patch minor major version install update outdated sync release status duplicate-check platform pip peer generate help"
+  generate_types="manifest version readme shields install-block install-block-tpack workflow-auto-release"
   pip_cmds="add remove list"
+  peer_cmds="add remove list"
+  platform_cmds="add remove"
+  platform_values="windows mac linux"
   status_values="reference prototype experimental preview stable deprecated archived"
   duplicate_check_values="on off"
   flags="--dry-run --yes -y -v --verbose --search --help"
@@ -178,8 +190,14 @@ _tpack() {
     case "$prev" in
       generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
       pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
+      peer) COMPREPLY=($(compgen -W "$peer_cmds" -- "$cur")) ;;
       status) COMPREPLY=($(compgen -W "$status_values" -- "$cur")) ;;
       duplicate-check) COMPREPLY=($(compgen -W "$duplicate_check_values" -- "$cur")) ;;
+      platform) COMPREPLY=($(compgen -W "$platform_cmds" -- "$cur")) ;;
+    esac
+  elif (( COMP_CWORD == 3 )); then
+    case "${COMP_WORDS[1]}" in
+      platform) COMPREPLY=($(compgen -W "$platform_values" -- "$cur")) ;;
     esac
   fi
 }

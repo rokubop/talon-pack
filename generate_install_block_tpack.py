@@ -1,4 +1,4 @@
-"""Generate installation instructions for a Talon repo"""
+"""Generate installation instructions with talon-pack option first, manual clone second."""
 import json
 import os
 import sys
@@ -9,72 +9,11 @@ _script_dir = str(Path(__file__).parent.resolve())
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
-ALL_PLATFORMS = {"windows", "mac", "linux"}
-
-def _platform_suffix(dep_info: dict) -> str:
-    """Return a platform note like ' (Windows/Linux only)' if platforms are restricted."""
-    platforms = dep_info.get('platforms', [])
-    if not platforms or set(platforms) >= ALL_PLATFORMS:
-        return ""
-    names = [p.capitalize() if p != "mac" else "Mac" for p in sorted(platforms)]
-    return f" ({'/'.join(names)} only)"
+from generate_install_block import generate_pip_install_commands, _platform_suffix
 
 
-def _pip_spec(pip_name: str, pip_info: dict) -> str:
-    """Build a single pip install spec string."""
-    version = pip_info.get('version', '')
-    if version and version != '*':
-        return f"{pip_name}{version}"
-    return pip_name
-
-
-def _pip_install_block(pip_specs: list[str]) -> list[str]:
-    """Generate platform-specific pip install lines for given specs."""
-    all_specs = " ".join(pip_specs)
-    return [
-        "```sh",
-        "# Windows",
-        f"~/AppData/Roaming/talon/venv/[VERSION]/Scripts/pip.bat install {all_specs}",
-        "",
-        "# Linux/Mac",
-        f"~/.talon/bin/pip install {all_specs}",
-        "```",
-    ]
-
-
-def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
-    """Generate the pip install command block. Returns None if no pip deps."""
-    if not pip_dependencies:
-        return None
-
-    required = {k: v for k, v in pip_dependencies.items() if not v.get('optional')}
-    optional = {k: v for k, v in pip_dependencies.items() if v.get('optional')}
-
-    lines = []
-
-    if required:
-        lines.append("Install using Talon's bundled pip:")
-        lines.append("")
-        lines.extend(_pip_install_block([_pip_spec(k, v) for k, v in required.items()]))
-
-    if optional:
-        if required:
-            lines.append("")
-        for pip_name, pip_info in optional.items():
-            description = pip_info.get('description', '')
-            desc_suffix = f" — {description}" if description else ""
-            lines.append(f"**Optional**: `{pip_name}`{desc_suffix}")
-            lines.append("")
-            lines.extend(_pip_install_block([_pip_spec(pip_name, pip_info)]))
-
-    if not required and not optional:
-        return None
-
-    return "\n".join(lines)
-
-
-def generate_installation_markdown(manifest: dict) -> str:
-    """Generate installation section markdown from manifest data."""
+def generate_installation_markdown_tpack(manifest: dict) -> str:
+    """Generate installation section with two options: tpack and manual clone."""
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
     peer_dependencies = manifest.get('peerDependencies', {})
@@ -94,8 +33,10 @@ def generate_installation_markdown(manifest: dict) -> str:
     }
 
     lines = ["## Installation"]
+    lines.append("")
+    lines.append("Install using [talon-pack](https://github.com/rokubop/talon-pack) or manually clone the repositories.")
 
-    # Combine Requirements and Dependencies sections
+    # Dependencies section
     has_requirements = bool(requires)
     has_dependencies = bool(dependencies)
     has_peer = bool(peer_dependencies)
@@ -113,7 +54,6 @@ def generate_installation_markdown(manifest: dict) -> str:
             sorted_requires.append('talonBeta')
         sorted_requires.extend([req for req in requires if req != 'talonBeta'])
 
-        # Add requirements
         if has_requirements:
             for req in sorted_requires:
                 description = requirement_descriptions.get(req, f"**{req}**")
@@ -129,7 +69,6 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     direct_deps[dep_name] = dep_info
 
-        # Add direct dependencies
         if direct_deps:
             for dep_name, dep_info in direct_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
@@ -140,7 +79,6 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+){plat}")
 
-        # Add transitive dependencies
         if transitive_deps:
             for dep_name, dep_info in transitive_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
@@ -153,7 +91,6 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+){plat}{suffix}")
 
-        # Add peer dependencies
         if has_peer:
             for dep_name, dep_info in peer_dependencies.items():
                 version = dep_info.get('min_version') or dep_info.get('version', 'unknown')
@@ -165,7 +102,6 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}** (v{version}+){plat}{suffix}")
 
-        # Add bundled dependencies
         if has_bundled:
             bundled_names = []
             for dep_name, dep_info in bundled_dependencies.items():
@@ -177,7 +113,6 @@ def generate_installation_markdown(manifest: dict) -> str:
                     bundled_names.append(f"{dep_name} v{version}")
             lines.append(f"- **Bundled**: {', '.join(bundled_names)}")
 
-        # Add pip dependencies to the listing
         if has_pip:
             direct_pip = {k: v for k, v in pip_dependencies.items() if not v.get('required_by')}
             transitive_pip = {k: v for k, v in pip_dependencies.items() if v.get('required_by')}
@@ -198,30 +133,28 @@ def generate_installation_markdown(manifest: dict) -> str:
                 pypi_url = f"https://pypi.org/project/{pip_name}/"
                 lines.append(f"- [**{pip_name}**]({pypi_url}){suffix} (Python package) - required by {', '.join(required_by)}")
 
-    # Determine number of install steps
-    has_pip_step = has_pip
-    has_clone_step = True  # Always have a clone step
+    # Pip install step (before clone options, if needed)
     all_pip_optional = has_pip and all(v.get('optional') for v in pip_dependencies.values())
-    use_numbered_steps = has_pip_step and not all_pip_optional  # Number steps when there are 2+ required
-
-    step = 1
-
-    # Step: Install Python packages (before cloning so code can load)
-    if has_pip_step:
+    if has_pip:
         pip_commands = generate_pip_install_commands(pip_dependencies)
         pip_heading = "Install Python Packages (Optional)" if all_pip_optional else "Install Python Packages"
-        if use_numbered_steps:
-            lines.append(f"\n### {step}. {pip_heading}")
-            step += 1
-        else:
-            lines.append(f"\n### {pip_heading}")
+        lines.append(f"\n### {pip_heading}")
         lines.append(f"\n{pip_commands}")
 
-    # Step: Clone repositories
-    if use_numbered_steps:
-        lines.append(f"\n### {step}. Clone Repositories")
-    elif has_any_deps or dev_dependencies:
-        lines.append("\n### Install")
+    # Option 1: Using talon-pack
+    lines.append("\n### Option 1: Using talon-pack")
+    lines.append("")
+    lines.append("Set up [talon-pack](https://github.com/rokubop/talon-pack), then run:")
+    lines.append("")
+    lines.append("```sh")
+    if github_url:
+        lines.append(f"tpack install {github_url}")
+    else:
+        lines.append("tpack install <github_url>  # Add github URL to manifest.json")
+    lines.append("```")
+
+    # Option 2: Manual clone
+    lines.append("\n### Option 2: Manual Clone")
 
     if dependencies or peer_dependencies:
         lines.append("\nClone the dependencies and this repo into your [Talon](https://talonvoice.com/) user directory:")
@@ -235,26 +168,22 @@ def generate_installation_markdown(manifest: dict) -> str:
     lines.append("# Windows")
     lines.append("cd ~/AppData/Roaming/talon/user")
 
-    # Dependencies clones
     if dependencies:
         lines.append("")
         lines.append("# Dependencies")
         for dep_name, dep_info in dependencies.items():
-            required_by = dep_info.get('required_by')
-            if required_by:
-                continue  # Show transitive deps separately
+            if dep_info.get('required_by'):
+                continue
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
 
-        # Transitive dependencies
         has_transitive = any(dep_info.get('required_by') for dep_info in dependencies.values())
         if has_transitive:
             lines.append("")
             lines.append("# Also required (by dependencies above)")
             for dep_name, dep_info in dependencies.items():
-                required_by = dep_info.get('required_by')
-                if not required_by:
+                if not dep_info.get('required_by'):
                     continue
                 github = dep_info.get('github', '')
                 if github:
@@ -269,7 +198,6 @@ def generate_installation_markdown(manifest: dict) -> str:
             if github:
                 lines.append(f"git clone {github}")
 
-    # This repo
     if dependencies or peer_dependencies or dev_dependencies:
         lines.append("")
         lines.append("# This repo")
@@ -282,7 +210,7 @@ def generate_installation_markdown(manifest: dict) -> str:
 
     lines.append("```")
 
-    # Dev dependencies section (at the bottom - these are optional)
+    # Dev dependencies
     if dev_dependencies:
         lines.append("\n### Development Dependencies")
         lines.append("\nOptional dependencies for development and testing:")
@@ -310,8 +238,8 @@ def generate_installation_markdown(manifest: dict) -> str:
     return "\n".join(lines)
 
 
-def generate_installation_instructions(package_dir: str):
-    """Generate installation instructions from manifest.json and print them."""
+def generate_installation_instructions_tpack(package_dir: str):
+    """Generate installation instructions with tpack option and print them."""
     full_package_dir = os.path.abspath(package_dir)
 
     if not os.path.isdir(full_package_dir):
@@ -328,7 +256,7 @@ def generate_installation_instructions(package_dir: str):
     with open(manifest_path, 'r', encoding='utf-8') as f:
         manifest = json.load(f)
 
-    installation_md = generate_installation_markdown(manifest)
+    installation_md = generate_installation_markdown_tpack(manifest)
 
     print("\n" + "=" * 60)
     print("Installation Instructions (copy to README.md)")
@@ -338,8 +266,8 @@ def generate_installation_instructions(package_dir: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python generate_install_block.py <directory>")
-        print("Example: python generate_install_block.py ../my-repo")
+        print("Usage: python generate_install_block_tpack.py <directory>")
+        print("Example: python generate_install_block_tpack.py ../my-repo")
         sys.exit(1)
 
     if len(sys.argv) > 2:
@@ -348,4 +276,4 @@ if __name__ == "__main__":
         print()
 
     package_dir = sys.argv[1]
-    generate_installation_instructions(package_dir)
+    generate_installation_instructions_tpack(package_dir)

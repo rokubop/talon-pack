@@ -5,6 +5,7 @@ Will update instead of overwriting existing code where relevant.
 Usage:
   tpack [directory]              Update manifest, _version, and readme
   tpack info [dir]               List contributions, dependencies, and info
+  tpack deps [dir]               Show all dependencies with install status
   tpack patch [dir]               Bump patch version (1.0.0 -> 1.0.1)
   tpack minor [dir]               Bump minor version (1.0.0 -> 1.1.0)
   tpack major [dir]               Bump major version (1.0.0 -> 2.0.0)
@@ -21,15 +22,22 @@ Usage:
   tpack duplicate-check [dir]      Show current duplicate check setting
   tpack duplicate-check on [dir]   Enable duplicate check in _version.py
   tpack duplicate-check off [dir]  Disable duplicate check in _version.py
+  tpack platform [dir]             Show current platforms
+  tpack platform add <p> [dir]     Add platform (windows, mac, linux)
+  tpack platform remove <p> [dir]  Remove platform
   tpack pip add <pkg> [dir]        Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
+  tpack peer add <pkg|url> [dir]   Add peer dependency (package name or GitHub URL)
+  tpack peer remove <pkg> [dir]    Remove peer dependency
+  tpack peer list [dir]            List peer dependencies
   tpack generate <type> [dir]      Generate a specific file
     manifest                       Generate manifest.json
     version                        Generate _version.py
     readme                         Generate README.md
     shields                        Generate shield badges
     install-block                  Generate install block (outputs to console)
+    install-block-tpack            Generate install block with tpack option (outputs to console)
     workflow-auto-release          Generate .github/workflows/release.yml
   tpack --dry-run                Preview changes without writing files
   tpack --yes, -y                Skip confirmation prompts
@@ -227,6 +235,129 @@ def status_command(new_status: str | None, directory: Path, dry_run: bool = Fals
                     run_generator("generate_shields.py", str(directory))
 
         return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+VALID_PLATFORMS = ["windows", "mac", "linux"]
+
+
+def platform_command(action: str | None, platform_names: list[str] | None, directory: Path, dry_run: bool = False) -> bool:
+    """Show, add, or remove platform entries in manifest.json."""
+    from diff_utils import GREEN, RED, CYAN, DIM, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            old_content = f.read()
+            manifest = json.loads(old_content)
+
+        current = manifest.get('platforms', [])
+        name = manifest.get('name', directory.name)
+
+        # Show current setting + usage
+        if action is None:
+            if current:
+                print(f"{name}: platforms {GREEN}{', '.join(current)}{RESET}")
+            else:
+                print(f"{name}: platforms {DIM}(not set){RESET}")
+            print(f"\nUsage:")
+            print(f"  tpack platform add <platform> [...]      Add platform(s)")
+            print(f"  tpack platform remove <platform> [...]   Remove platform(s)")
+            print(f"\nValid platforms: {', '.join(VALID_PLATFORMS)}")
+            print(f"Examples:")
+            print(f"  tpack platform add windows mac")
+            print(f"  tpack platform add windows,mac,linux")
+            return True
+
+        if action == "add":
+            if not platform_names:
+                print(f"{RED}Error: platform name required{RESET}")
+                print(f"Valid platforms: {', '.join(VALID_PLATFORMS)}")
+                return False
+
+            for p in platform_names:
+                if p not in VALID_PLATFORMS:
+                    print(f"{RED}Error: unknown platform '{p}'{RESET}")
+                    print(f"Valid platforms: {', '.join(VALID_PLATFORMS)}")
+                    return False
+
+            added = [p for p in platform_names if p not in current]
+            if not added:
+                print(f"{DIM}{', '.join(platform_names)} already in platforms{RESET}")
+                return True
+
+            current.extend(added)
+            # Sort in canonical order
+            current = [p for p in VALID_PLATFORMS if p in current]
+            manifest['platforms'] = current
+            manifest = reorder_manifest_key(manifest, 'platforms', 'requires')
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Added {', '.join(added)} to platforms{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+
+        elif action == "remove":
+            if not platform_names:
+                print(f"{RED}Error: platform name required{RESET}")
+                print(f"Usage: tpack platform remove <platform> [...]")
+                return False
+
+            for p in platform_names:
+                if p not in current:
+                    print(f"{RED}Error: '{p}' is not in platforms{RESET}")
+                    if current:
+                        print(f"{DIM}Current platforms: {', '.join(current)}{RESET}")
+                    return False
+
+            for p in platform_names:
+                current.remove(p)
+
+            if current:
+                manifest['platforms'] = current
+            elif 'platforms' in manifest:
+                del manifest['platforms']
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Removed {', '.join(platform_names)} from platforms{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+
+        else:
+            print(f"{RED}Unknown platform action: {action}{RESET}")
+            print(f"Usage:")
+            print(f"  tpack platform add <platform> [...]      Add platform(s)")
+            print(f"  tpack platform remove <platform> [...]   Remove platform(s)")
+            return False
+
     except Exception as e:
         print(f"{RED}Error: {e}{RESET}")
         return False
@@ -633,13 +764,127 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
         else:
             print(f"\n{DIM}All packages are up to date.{RESET}")
 
-        # Check for local changes that may need a version bump (only if version not already bumped)
+        # Check for local changes that may need a version bump
+        # Skip if: no remote (not published yet), or version already bumped past remote
         version_already_bumped = self_remote and [int(x) for x in local_version.split('.')] > [int(x) for x in self_remote.split('.')]
-        if not version_already_bumped:
+        if self_remote and not version_already_bumped:
             local_changes = check_local_changes(directory, include_commits_ahead=True)
             if local_changes:
                 print(f"  {YELLOW}Local changes detected: {local_changes}.{RESET}")
                 print(f"  {YELLOW}Consider running {GREEN}tpack patch{YELLOW}, {GREEN}tpack minor{YELLOW}, or {GREEN}tpack major{YELLOW} before releasing.{RESET}")
+
+        print()
+        return True
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        return False
+
+
+def deps_command(directory: Path, search_dir: str = None) -> bool:
+    """Show all dependencies with local install status (no network calls)."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    try:
+        with open(manifest_path, 'r', encoding='utf-8') as f:
+            manifest = json.load(f)
+
+        dependencies = manifest.get('dependencies', {})
+        peer_deps = manifest.get('peerDependencies', {})
+        dev_deps = manifest.get('devDependencies', {})
+        bundled_deps = manifest.get('bundledDependencies', {})
+        pip_deps = manifest.get('pipDependencies', {})
+
+        has_any = dependencies or peer_deps or dev_deps or bundled_deps or pip_deps
+
+        if not has_any:
+            pkg_name = manifest.get('name', directory.name)
+            print(f"\n{CYAN}{pkg_name}/{RESET}")
+            print(f"{DIM}No dependencies.{RESET}\n")
+            return True
+
+        # Scan installed versions
+        talon_user_dir = search_dir or find_talon_user_dir()
+        installed = scan_installed_versions(talon_user_dir) if talon_user_dir else {}
+
+        # Scan installed pip packages
+        installed_pip = set()
+        if pip_deps:
+            pip_path = find_talon_pip()
+            if pip_path:
+                installed_pip = get_installed_pip_packages(pip_path)
+
+        pkg_name = manifest.get('name', directory.name)
+        print(f"\n{CYAN}{pkg_name}/{RESET}")
+
+        def print_dep_section(title, deps, is_bundled=False):
+            if not deps:
+                return
+            print(f"\n  {CYAN}{title}:{RESET}")
+            for dep_name, dep_info in sorted(deps.items()):
+                version = dep_info.get('min_version') or dep_info.get('version', '?')
+                required_by = dep_info.get('required_by', [])
+                platforms = dep_info.get('platforms', [])
+
+                if is_bundled:
+                    status = f"{DIM}bundled{RESET}"
+                elif dep_name in installed:
+                    inst_ver = installed[dep_name]["version"]
+                    inst_parts = [int(x) for x in inst_ver.split('.')]
+                    min_parts = [int(x) for x in version.split('.')] if version != '?' else [0]
+                    if inst_parts >= min_parts:
+                        status = f"{GREEN}{inst_ver} installed{RESET}"
+                    else:
+                        status = f"{YELLOW}{inst_ver} installed (needs >={version}){RESET}"
+                else:
+                    status = f"{RED}not installed{RESET}"
+
+                suffix_parts = []
+                if platforms and set(platforms) < {"windows", "mac", "linux"}:
+                    names = [p.capitalize() if p != "mac" else "Mac" for p in sorted(platforms)]
+                    suffix_parts.append(f"{'/'.join(names)} only")
+                if required_by:
+                    suffix_parts.append(f"required by {', '.join(required_by)}")
+                suffix = f"  {DIM}({', '.join(suffix_parts)}){RESET}" if suffix_parts else ""
+
+                print(f"    {dep_name}  >={version}  {status}{suffix}")
+
+        def print_pip_section(pip_deps):
+            if not pip_deps:
+                return
+            print(f"\n  {CYAN}Pip Dependencies:{RESET}")
+            for pip_name, pip_info in sorted(pip_deps.items()):
+                version = pip_info.get('version', '')
+                optional = pip_info.get('optional', False)
+                description = pip_info.get('description', '')
+                required_by = pip_info.get('required_by', [])
+
+                if pip_name.lower() in installed_pip:
+                    status = f"{GREEN}installed{RESET}"
+                else:
+                    status = f"{RED}not installed{RESET}"
+
+                suffix_parts = []
+                if optional:
+                    suffix_parts.append("optional")
+                if description:
+                    suffix_parts.append(description)
+                if required_by:
+                    suffix_parts.append(f"required by {', '.join(required_by)}")
+                suffix = f"  {DIM}({', '.join(suffix_parts)}){RESET}" if suffix_parts else ""
+
+                ver_display = f"  {version}" if version and version != '*' else ""
+                print(f"    {pip_name}{ver_display}  {status}{suffix}")
+
+        print_dep_section("Dependencies", dependencies)
+        print_dep_section("Peer Dependencies", peer_deps)
+        print_dep_section("Bundled Dependencies", bundled_deps, is_bundled=True)
+        print_pip_section(pip_deps)
+        print_dep_section("Dev Dependencies", dev_deps)
 
         print()
         return True
@@ -779,9 +1024,13 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
             manifest = json.load(f)
 
         dependencies = manifest.get('dependencies', {})
+        peer_deps = manifest.get('peerDependencies', {})
         pip_deps = manifest.get('pipDependencies', {})
 
-        if not dependencies and not pip_deps:
+        # Merge peer dependencies into the install list
+        all_deps = {**dependencies, **peer_deps}
+
+        if not all_deps and not pip_deps:
             print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
             return True
 
@@ -795,7 +1044,7 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
         # Determine what needs to be installed
         to_clone = []
         already_installed = []
-        for dep_name, dep_info in sorted(dependencies.items()):
+        for dep_name, dep_info in sorted(all_deps.items()):
             github_url = dep_info.get('github', '')
             if dep_name in installed:
                 already_installed.append(dep_name)
@@ -1513,6 +1762,195 @@ def pip_command(action: str, package_spec: str | None, directory: Path, dry_run:
         return False
 
 
+def peer_command(action: str, package_spec: str | None, directory: Path, dry_run: bool = False) -> bool:
+    """Add, remove, or list peer dependencies."""
+    from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
+
+    manifest_path = directory / "manifest.json"
+    if not manifest_path.exists():
+        print(f"{RED}Error: manifest.json not found in {directory}{RESET}")
+        return False
+
+    if action == "add":
+        if not package_spec:
+            print(f"{RED}Error: package name or GitHub URL required{RESET}")
+            print(f"Usage: tpack peer add <package|github_url> [directory]")
+            return False
+
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                old_content = f.read()
+                manifest = json.loads(old_content)
+
+            peer_deps = manifest.get('peerDependencies', {})
+
+            # Resolve package info from URL or installed packages
+            if package_spec.startswith('http'):
+                # GitHub URL provided
+                url = package_spec.rstrip('/')
+                name = repo_name_from_url(url)
+                # Try to find installed version for namespace/version
+                talon_user_dir = find_talon_user_dir()
+                installed = scan_installed_versions(talon_user_dir) if talon_user_dir else {}
+                if name in installed:
+                    pkg_path = installed[name]["path"]
+                    pkg_manifest_path = os.path.join(pkg_path, "manifest.json")
+                    with open(pkg_manifest_path, 'r', encoding='utf-8') as f:
+                        pkg_manifest = json.load(f)
+                    info = {
+                        "min_version": pkg_manifest.get("version", "0.0.0"),
+                        "namespace": pkg_manifest.get("namespace", ""),
+                        "github": url,
+                    }
+                    if pkg_manifest.get("platforms"):
+                        info["platforms"] = pkg_manifest["platforms"]
+                else:
+                    # Not installed locally, try fetching remote manifest
+                    remote_manifest = fetch_remote_manifest(url)
+                    if remote_manifest:
+                        info = {
+                            "min_version": remote_manifest.get("version", "0.0.0"),
+                            "namespace": remote_manifest.get("namespace", ""),
+                            "github": url,
+                        }
+                        if remote_manifest.get("platforms"):
+                            info["platforms"] = remote_manifest["platforms"]
+                    else:
+                        print(f"{RED}Error: Could not resolve package info for {url}{RESET}")
+                        return False
+            else:
+                # Package name provided - look up from installed packages
+                name = package_spec
+                talon_user_dir = find_talon_user_dir()
+                if not talon_user_dir:
+                    print(f"{RED}Error: Could not find Talon user directory{RESET}")
+                    return False
+                installed = scan_installed_versions(talon_user_dir)
+                if name not in installed:
+                    print(f"{RED}Error: '{name}' is not installed. Provide a GitHub URL instead.{RESET}")
+                    if installed:
+                        # Suggest similar names
+                        similar = [n for n in installed if name in n or n in name]
+                        if similar:
+                            print(f"{DIM}Similar installed packages: {', '.join(sorted(similar))}{RESET}")
+                    return False
+                pkg_path = installed[name]["path"]
+                pkg_manifest_path = os.path.join(pkg_path, "manifest.json")
+                with open(pkg_manifest_path, 'r', encoding='utf-8') as f:
+                    pkg_manifest = json.load(f)
+                info = {
+                    "min_version": pkg_manifest.get("version", "0.0.0"),
+                    "namespace": pkg_manifest.get("namespace", ""),
+                    "github": pkg_manifest.get("github", ""),
+                }
+                if pkg_manifest.get("platforms"):
+                    info["platforms"] = pkg_manifest["platforms"]
+
+            if name in peer_deps:
+                print(f"{DIM}{name} is already in peerDependencies{RESET}")
+                return True
+
+            peer_deps[name] = info
+            manifest['peerDependencies'] = dict(sorted(peer_deps.items()))
+            manifest = reorder_manifest_key(manifest, 'peerDependencies', 'dependencies')
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Added {name} to peerDependencies{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    elif action == "remove":
+        if not package_spec:
+            print(f"{RED}Error: package name required{RESET}")
+            print(f"Usage: tpack peer remove <package> [directory]")
+            return False
+
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                old_content = f.read()
+                manifest = json.loads(old_content)
+
+            peer_deps = manifest.get('peerDependencies', {})
+
+            if package_spec not in peer_deps:
+                print(f"{RED}Error: '{package_spec}' is not in peerDependencies{RESET}")
+                if peer_deps:
+                    print(f"{DIM}Current peer dependencies: {', '.join(sorted(peer_deps.keys()))}{RESET}")
+                return False
+
+            del peer_deps[package_spec]
+            if peer_deps:
+                manifest['peerDependencies'] = peer_deps
+            elif 'peerDependencies' in manifest:
+                del manifest['peerDependencies']
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Removed {package_spec} from peerDependencies{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    elif action == "list":
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+
+            peer_deps = manifest.get('peerDependencies', {})
+            if not peer_deps:
+                print(f"{DIM}No peer dependencies in {directory.name}{RESET}")
+                return True
+
+            print(f"\n{CYAN}{directory.name}{RESET} peer dependencies:")
+            for name, info in sorted(peer_deps.items()):
+                version = info.get('min_version', '')
+                namespace = info.get('namespace', '')
+                parts = [f"  {name}"]
+                if version:
+                    parts.append(f" ({version})")
+                if namespace:
+                    parts.append(f" {DIM}{namespace}{RESET}")
+                print("".join(parts))
+
+            return True
+        except Exception as e:
+            print(f"{RED}Error: {e}{RESET}")
+            return False
+
+    else:
+        print(f"{RED}Unknown peer action: {action}{RESET}")
+        print(f"Usage: tpack peer add <package>       Add peer dependency")
+        print(f"       tpack peer remove <package>   Remove peer dependency")
+        print(f"       tpack peer list               List peer dependencies")
+        return False
+
+
 def load_config() -> dict:
     """Load config from tpack.config.json, returning defaults if not found."""
     defaults = {
@@ -1690,9 +2128,9 @@ def main():
             print(f"{RED}Unknown flag: {arg}{RESET}")
             # Suggest if it looks like a subcommand
             subcommands = [
-                'info', 'patch', 'minor', 'major', 'version',
+                'info', 'deps', 'patch', 'minor', 'major', 'version',
                 'install', 'update', 'outdated', 'sync', 'release',
-                'status', 'duplicate-check', 'pip', 'generate', 'help',
+                'status', 'duplicate-check', 'platform', 'pip', 'peer', 'generate', 'help',
             ]
             bare = arg.lstrip('-')
             if bare in subcommands:
@@ -1708,6 +2146,12 @@ def main():
     if len(args) >= 1 and args[0] == 'info':
         directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
         success = info_command(directory)
+        sys.exit(0 if success else 1)
+
+    # tpack deps [directory]
+    if len(args) >= 1 and args[0] == 'deps':
+        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+        success = deps_command(directory, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack version patch/minor/major [directory]
@@ -1748,9 +2192,9 @@ def main():
                 else:
                     print(f"{name} v{version}")
 
-                # Only suggest bumping if version hasn't been bumped past remote
+                # Only suggest bumping if remote exists and version hasn't been bumped past it
                 version_already_bumped = remote_version and [int(x) for x in version.split('.')] > [int(x) for x in remote_version.split('.')]
-                if not version_already_bumped:
+                if remote_version and not version_already_bumped:
                     local_changes = check_local_changes(directory, include_commits_ahead=True)
                     if local_changes:
                         print(f"\n  {YELLOW}Local changes detected: {local_changes}.{RESET}")
@@ -1817,6 +2261,50 @@ def main():
             value = None
             directory = Path(".").resolve()
         success = duplicate_check_command(value, directory, dry_run)
+        sys.exit(0 if success else 1)
+
+    # tpack platform [directory]
+    # tpack platform add <platform> [...] [directory]
+    # tpack platform remove <platform> [...] [directory]
+    if len(args) >= 1 and args[0] == 'platform':
+        dry_run = "--dry-run" in sys.argv
+        if len(args) >= 3 and args[1] in ('add', 'remove'):
+            action = args[1]
+            # Collect platform names (split comma-separated, skip flags)
+            raw_names = [a for a in args[2:] if not a.startswith('-')]
+            # Split comma-separated values and strip whitespace
+            platform_names = []
+            directory = Path(".").resolve()
+            for name in raw_names:
+                parts = [p.strip().rstrip(',') for p in name.split(',') if p.strip().rstrip(',')]
+                # Check if this looks like a directory (not a valid platform)
+                if len(parts) == 1 and parts[0] not in VALID_PLATFORMS and Path(parts[0]).is_dir():
+                    directory = Path(parts[0]).resolve()
+                else:
+                    platform_names.extend(parts)
+        elif len(args) >= 2 and args[1] in ('add', 'remove'):
+            action = args[1]
+            platform_names = None
+            directory = Path(".").resolve()
+        elif len(args) >= 2:
+            candidate = Path(args[1])
+            if candidate.is_dir():
+                action = None
+                platform_names = None
+                directory = candidate.resolve()
+            else:
+                from diff_utils import RED, RESET
+                print(f"{RED}Unknown platform subcommand: {args[1]}{RESET}")
+                print(f"Usage:")
+                print(f"  tpack platform                       Show current platforms")
+                print(f"  tpack platform add <platform> [...]   Add platform(s)")
+                print(f"  tpack platform remove <platform> [...] Remove platform(s)")
+                sys.exit(1)
+        else:
+            action = None
+            platform_names = None
+            directory = Path(".").resolve()
+        success = platform_command(action, platform_names, directory, dry_run)
         sys.exit(0 if success else 1)
 
     # tpack install [dir] or tpack install <github_url>
@@ -1895,11 +2383,38 @@ def main():
             sys.exit(1)
         sys.exit(0 if success else 1)
 
+    # tpack peer add <package|url> [directory]
+    # tpack peer remove <package> [directory]
+    # tpack peer list [directory]
+    if len(args) >= 1 and args[0] == 'peer':
+        dry_run = "--dry-run" in sys.argv
+        if len(args) >= 2 and args[1] == 'remove':
+            package_spec = args[2] if len(args) >= 3 else None
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = peer_command("remove", package_spec, directory, dry_run)
+        elif len(args) >= 2 and args[1] == 'list':
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+            success = peer_command("list", None, directory, dry_run)
+        elif len(args) >= 3 and args[1] == 'add':
+            package_spec = args[2]
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = peer_command("add", package_spec, directory, dry_run)
+        elif len(args) >= 2:
+            package_spec = args[1]
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+            success = peer_command("add", package_spec, directory, dry_run)
+        else:
+            print("Usage: tpack peer add <package>       Add peer dependency")
+            print("       tpack peer remove <package>   Remove peer dependency")
+            print("       tpack peer list               List peer dependencies")
+            sys.exit(1)
+        sys.exit(0 if success else 1)
+
     # tpack generate <type> [directory]
     if len(args) >= 1 and args[0] == 'generate':
         if len(args) < 2:
             print("Usage: tpack generate <type> [directory]")
-            print("Types: manifest, version, readme, shields, install-block, workflow-auto-release")
+            print("Types: manifest, version, readme, shields, install-block, install-block-tpack, workflow-auto-release")
             sys.exit(1)
         gen_type = args[1]
         directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
@@ -1912,6 +2427,7 @@ def main():
             "readme": "generate_readme.py",
             "shields": "generate_shields.py",
             "install-block": "generate_install_block.py",
+            "install-block-tpack": "generate_install_block_tpack.py",
             "workflow-auto-release": "generate_workflow_auto_release.py",
         }
 

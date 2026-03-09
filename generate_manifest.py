@@ -702,6 +702,7 @@ def scan_all_manifests(talon_root: str) -> tuple:
                 package_version = manifest.get('version', '0.0.0')
                 package_namespace = manifest.get('namespace', '')
                 package_github = manifest.get('github', '')
+                package_platforms = manifest.get('platforms', [])
 
                 if not package_name:
                     continue
@@ -711,12 +712,15 @@ def scan_all_manifests(talon_root: str) -> tuple:
                 for entity_type in ENTITIES:
                     entities = contributes.get(entity_type, [])
                     for entity in entities:
-                        entity_to_package[entity] = {
+                        info = {
                             'package': package_name,
                             'min_version': package_version,
                             'namespace': package_namespace,
                             'github': package_github
                         }
+                        if package_platforms:
+                            info['platforms'] = package_platforms
+                        entity_to_package[entity] = info
 
                 # Index package dependencies for transitive resolution
                 deps = manifest.get('dependencies', {})
@@ -771,6 +775,9 @@ def resolve_package_dependencies(depends: Entities, entity_to_package: dict, cur
                     }
                     if pkg_github:
                         dep_info['github'] = pkg_github
+                    pkg_platforms = pkg_info.get('platforms', [])
+                    if pkg_platforms:
+                        dep_info['platforms'] = pkg_platforms
                     package_deps[pkg_name] = dep_info
 
     return dict(sorted(package_deps.items()))
@@ -861,6 +868,9 @@ def resolve_transitive_dependencies(
                 github = sub_dep_info.get('github', '')
                 if github:
                     new_dep['github'] = github
+                platforms = sub_dep_info.get('platforms', [])
+                if platforms:
+                    new_dep['platforms'] = platforms
                 all_deps[sub_dep_name] = new_dep
 
             # Continue walking if not yet visited
@@ -1125,7 +1135,7 @@ def prune_manifest_data(manifest_data):
             del manifest_data[field]
 
     # Prune empty dicts
-    for field in ['pipDependencies', 'bundledDependencies']:
+    for field in ['peerDependencies', 'pipDependencies', 'bundledDependencies']:
         if field in manifest_data and isinstance(manifest_data[field], dict) and len(manifest_data[field]) == 0:
             del manifest_data[field]
 
@@ -1397,6 +1407,11 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
             # Track dependencies before filtering
             all_resolved_deps = dict(package_dependencies)
 
+            # Remove any dependencies that are in peerDependencies
+            existing_peer_deps = existing_manifest_data.get("peerDependencies", {})
+            for pkg_name in existing_peer_deps:
+                package_dependencies.pop(pkg_name, None)
+
             # Remove any dependencies that are in devDependencies
             existing_dev_deps = existing_manifest_data.get("devDependencies", {})
             dev_deps_found = []
@@ -1607,9 +1622,15 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                 if not is_builtin_action(action)
             ])
 
+            new_manifest_data["requires"] = sorted(list(requires_set))
+
+            # Preserve platforms if present (manually managed via tpack platform)
+            if "platforms" in existing_manifest_data:
+                new_manifest_data["platforms"] = existing_manifest_data["platforms"]
+
             new_manifest_data.update({
-                "requires": sorted(list(requires_set)),
                 "dependencies": package_dependencies,
+                "peerDependencies": existing_manifest_data.get("peerDependencies", {}),
                 "devDependencies": existing_manifest_data.get("devDependencies", {}),
                 "bundledDependencies": bundled_dependencies,
                 "pipDependencies": pip_dependencies,

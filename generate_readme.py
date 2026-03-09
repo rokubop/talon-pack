@@ -69,9 +69,10 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
     warnings = []
 
     dependencies = manifest.get("dependencies", {})
+    peer_dependencies = manifest.get("peerDependencies", {})
     dev_dependencies = manifest.get("devDependencies", {})
     bundled_dependencies = manifest.get("bundledDependencies", {})
-    all_deps = {**dependencies, **dev_dependencies, **bundled_dependencies}
+    all_deps = {**dependencies, **peer_dependencies, **dev_dependencies, **bundled_dependencies}
 
     for dep_name, dep_info in all_deps.items():
         version = dep_info.get("min_version") or dep_info.get("version", "")

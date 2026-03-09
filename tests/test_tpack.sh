@@ -223,6 +223,104 @@ run_test pass "tpack pip remove succeeds" tpack pip remove vgamepad "$WORKDIR"
 # After removing the only pip dep, pipDependencies key should be gone
 run_test pass "pip dep removed from manifest" bash -c "! grep -q 'vgamepad' '$WORKDIR/manifest.json'"
 
+# --- Peer Commands ---
+echo ""
+echo "peer commands:"
+# Add a peer dep by injecting a fake installed package
+FAKE_PEER_DIR="$FAKE_TALON/user/talon-fake-peer"
+mkdir -p "$FAKE_PEER_DIR"
+cat > "$FAKE_PEER_DIR/manifest.json" << 'PEEREOF'
+{
+  "name": "talon-fake-peer",
+  "version": "1.2.0",
+  "namespace": "user.fake_peer",
+  "github": "https://github.com/test/talon-fake-peer",
+  "platforms": ["windows", "linux"],
+  "_generator": "talon-pack"
+}
+PEEREOF
+
+run_test pass "tpack peer add succeeds" tpack peer add talon-fake-peer "$WORKDIR"
+assert_file_contains "peer dep added to manifest" "$WORKDIR/manifest.json" '"talon-fake-peer"'
+assert_file_contains "peer dep has peerDependencies key" "$WORKDIR/manifest.json" '"peerDependencies"'
+assert_file_contains "peer dep has min_version" "$WORKDIR/manifest.json" '"min_version": "1.2.0"'
+assert_file_contains "peer dep has namespace" "$WORKDIR/manifest.json" '"namespace": "user.fake_peer"'
+assert_file_contains "peer dep has platforms" "$WORKDIR/manifest.json" '"platforms"'
+
+run_test pass "tpack peer list succeeds" tpack peer list "$WORKDIR"
+assert_output_contains "peer list shows package" "talon-fake-peer" tpack peer list "$WORKDIR"
+
+# Adding same peer dep again should be a noop
+run_test pass "tpack peer add duplicate is noop" tpack peer add talon-fake-peer "$WORKDIR"
+
+run_test pass "tpack peer remove succeeds" tpack peer remove talon-fake-peer "$WORKDIR"
+run_test pass "peer dep removed from manifest" bash -c "! grep -q 'talon-fake-peer' '$WORKDIR/manifest.json'"
+run_test pass "peerDependencies key removed when empty" bash -c "! grep -q 'peerDependencies' '$WORKDIR/manifest.json'"
+
+# Error cases
+run_test fail "peer add nonexistent package fails" tpack peer add talon-nonexistent-pkg "$WORKDIR"
+run_test fail "peer remove nonexistent package fails" tpack peer remove talon-nonexistent-pkg "$WORKDIR"
+
+# --- Peer Deps in Install Block ---
+echo ""
+echo "peer deps in install block:"
+run_test pass "re-add peer dep for install block test" tpack peer add talon-fake-peer "$WORKDIR"
+assert_output_contains "install-block shows peer dependency label" "peer dependency" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block shows peer clone comment" "Peer dependencies" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block shows peer github url" "talon-fake-peer" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block-tpack shows peer dependency label" "peer dependency" tpack generate install-block-tpack "$WORKDIR"
+
+# --- Platform Suffix in Install Block ---
+echo ""
+echo "platform suffix in install block:"
+# The fake peer dep has platforms: ["windows", "linux"], so it should show platform restriction
+assert_output_contains "install-block shows platform restriction" "Windows" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block shows platform restriction (Linux)" "Linux" tpack generate install-block "$WORKDIR"
+
+# Clean up peer dep for remaining tests
+run_test pass "clean up peer dep" tpack peer remove talon-fake-peer "$WORKDIR"
+rm -rf "$FAKE_PEER_DIR"
+
+# --- Deps Command ---
+echo ""
+echo "deps command:"
+# Re-create fake peer package (cleaned up in platform suffix tests)
+FAKE_PEER_DIR="$FAKE_TALON/user/talon-fake-peer"
+mkdir -p "$FAKE_PEER_DIR"
+cat > "$FAKE_PEER_DIR/manifest.json" << 'PEEREOF2'
+{
+  "name": "talon-fake-peer",
+  "version": "1.2.0",
+  "namespace": "user.fake_peer",
+  "github": "https://github.com/test/talon-fake-peer",
+  "platforms": ["windows", "linux"],
+  "_generator": "talon-pack"
+}
+PEEREOF2
+# Re-add peer dep and pip dep to test deps view
+run_test pass "add peer dep for deps test" tpack peer add talon-fake-peer "$WORKDIR"
+run_test pass "add pip dep for deps test" tpack pip add "vgamepad>=1.0.0" "$WORKDIR"
+
+run_test pass "tpack deps succeeds" tpack deps "$WORKDIR"
+assert_output_contains "deps shows Dependencies section" "Dependencies" tpack deps "$WORKDIR"
+assert_output_contains "deps shows Peer Dependencies section" "Peer Dependencies" tpack deps "$WORKDIR"
+assert_output_contains "deps shows Pip Dependencies section" "Pip Dependencies" tpack deps "$WORKDIR"
+assert_output_contains "deps shows peer dep name" "talon-fake-peer" tpack deps "$WORKDIR"
+assert_output_contains "deps shows pip dep name" "vgamepad" tpack deps "$WORKDIR"
+assert_output_contains "deps shows install status for peer" "installed\|not installed" tpack deps "$WORKDIR"
+
+# Clean up
+run_test pass "remove peer dep after deps test" tpack peer remove talon-fake-peer "$WORKDIR"
+run_test pass "remove pip dep after deps test" tpack pip remove vgamepad "$WORKDIR"
+rm -rf "$FAKE_PEER_DIR"
+
+# No deps case
+WORKDIR_NODEPS="$(setup_workdir)"
+run_test pass "tpack generates files for nodeps" tpack --yes "$WORKDIR_NODEPS"
+run_test pass "tpack deps with no deps succeeds" tpack deps "$WORKDIR_NODEPS"
+assert_output_contains "deps shows no deps message" "No dependencies" tpack deps "$WORKDIR_NODEPS"
+cleanup_workdir "$WORKDIR_NODEPS"
+
 # --- Duplicate Check ---
 echo ""
 echo "duplicate-check:"
@@ -242,6 +340,7 @@ run_test pass "generate manifest succeeds" tpack generate manifest "$WORKDIR"
 run_test pass "generate version succeeds" tpack generate version "$WORKDIR"
 run_test pass "generate readme succeeds" tpack generate readme "$WORKDIR"
 run_test pass "generate install-block succeeds" tpack generate install-block "$WORKDIR"
+run_test pass "generate install-block-tpack succeeds" tpack generate install-block-tpack "$WORKDIR"
 run_test pass "generate workflow-auto-release succeeds" tpack generate workflow-auto-release "$WORKDIR" --force
 assert_file_exists "release.yml created" "$WORKDIR/.github/workflows/release.yml"
 assert_file_contains "release.yml has version check" "$WORKDIR/.github/workflows/release.yml" "manifest.json"

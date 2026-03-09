@@ -28,6 +28,9 @@ tpack release [dir]             # Create a GitHub release for the current versio
 tpack duplicate-check [dir]     # Show current duplicate check setting
 tpack duplicate-check on [dir]  # Enable duplicate check in _version.py
 tpack duplicate-check off [dir] # Disable duplicate check in _version.py
+tpack platform [dir]            # Show current platforms
+tpack platform add <p> [dir]    # Add platform (windows, mac, linux)
+tpack platform remove <p> [dir] # Remove platform
 tpack pip <pkg> [dir]           # Add pip dependency (e.g. vgamepad>=1.0.0)
 tpack pip remove <pkg> [dir]    # Remove pip dependency
 tpack pip list [dir]            # List pip dependencies
@@ -37,6 +40,7 @@ tpack generate <type> [dir]     # Generate a specific file
   readme                        #   Generate README.md
   shields                       #   Generate shield badges
   install-block                 #   Generate install block (outputs to console)
+  install-block-tpack           #   Generate install block with tpack option (outputs to console)
   workflow-auto-release         #   Generate .github/workflows/release.yml
 tpack --dry-run                 # Preview changes without writing files
 tpack --yes, -y                 # Skip confirmation prompts
