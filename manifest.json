@@ -2,7 +2,7 @@
   "name": "talon-pack",
   "title": "Talon Pack",
   "description": "CLI tool for Talon repos. Catalogs contributions and dependencies, manages versioning, and generates README badges.",
-  "version": "3.2.1",
+  "version": "3.2.2",
   "status": "preview",
   "namespace": "",
   "github": "https://github.com/rokubop/talon-pack",
@@ -21,7 +21,7 @@
   "depends": {},
   "validateDependencies": false,
   "_generator": "talon-pack",
-  "_generatorVersion": "3.2.1",
+  "_generatorVersion": "3.2.2",
   "_generatorRequiresVersionAction": false,
   "_generatorStrictNamespace": true,
   "_generatorFrozenFields": []
