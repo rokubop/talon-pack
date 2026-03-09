@@ -740,14 +740,14 @@ def outdated_command(directory: Path, search_dir: str = None, search_dir_display
                     needs_sync = manifest_ver and installed_parts > [int(x) for x in manifest_ver.split('.')]
 
                     if needs_update and needs_sync:
-                        status = f"{YELLOW}update available, needs sync{RESET}"
+                        status = f"{YELLOW}update available, sync available{RESET}"
                         has_updates = True
                         has_sync_needed = True
                     elif needs_update:
                         status = f"{YELLOW}update available{RESET}"
                         has_updates = True
                     elif needs_sync:
-                        status = f"{YELLOW}needs sync{RESET}"
+                        status = f"{YELLOW}sync available{RESET}"
                         has_sync_needed = True
                         has_updates = True
                     else:
