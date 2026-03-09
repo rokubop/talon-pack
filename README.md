@@ -1,20 +1,98 @@
 # Talon Pack
 
-![Version](https://img.shields.io/badge/version-3.2.4-blue)
+![Version](https://img.shields.io/badge/version-3.2.5-blue)
 ![Status](https://img.shields.io/badge/status-preview-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-green)
 
 ![Preview](preview.svg)
 
-CLI tool for Talon repos. Catalogs contributions and dependencies, manages versioning, and generates README badges.
+CLI tool that helps you manage Talon repositories. Auto-detect contributions, manage versioning, and install/update repos and their dependencies.
 
-> **Note:** Unofficial community tool.
+> [!NOTE]
+> Unofficial community tool.
 
-## Usage
+## Setup
+
+**1. Clone into your Talon directory:**
+
+```sh
+# mac and linux
+cd ~/.talon
+
+# windows
+cd ~/AppData/Roaming/talon
+
+git clone https://github.com/rokubop/talon-pack
+```
+
+**2. Run the setup script:**
+
+Auto-detects your OS and shell, adds the `tpack` alias + tab completion to your shell config, and shows the diff of what changed. Safe to re-run (skips if already set up).
+
+```bash
+# Mac / Linux
+bash ~/.talon/talon-pack/setup.sh
+
+# Windows (WSL / Git Bash)
+bash ~/AppData/Roaming/talon/talon-pack/setup.sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File "$env:APPDATA\talon\talon-pack\setup.ps1"
+```
+
+**3. Reload your shell:**
+```bash
+# Bash / Zsh
+source ~/.zshrc   # or ~/.bashrc
+
+# PowerShell
+. $PROFILE
+```
+
+Uses Talon's bundled Python, so no extra Python install needed.
+
+Having issues? See [Troubleshooting](#troubleshooting).
+
+---
+
+## For Users
+
+Install and manage Talon repos and their dependencies.
+
+```bash
+tpack install <github_url>       # Install a repo (+ its dependencies)
+tpack update [dir]               # Pull latest for all dependencies
+tpack install [dir]              # Install dependencies from manifest
+tpack deps [dir]                 # Show all dependencies with install status
+tpack outdated [dir]             # Check for newer versions (local vs remote)
+tpack info [dir]                 # Show package details and actions
+```
+
+### Example
+
+```bash
+tpack install https://github.com/rokubop/talon-gamekit
+```
+
+---
+
+## For Maintainers
+
+Generate manifests, manage versioning, and publish releases.
+
+### Quick Start
+
+```bash
+tpack info my_repo       # See what a folder contributes
+tpack --dry-run my_repo  # Preview changes without writing
+tpack my_repo            # Generate/update manifest, _version, and readme
+```
+
+### All Commands
 
 ```bash
 tpack [dir]                      # Generate/update manifest, _version, and readme
-tpack info [dir]                 # List contributions, dependencies, and info
+tpack info [dir]                 # Show package details and actions
 tpack deps [dir]                 # Show all dependencies with install status
 tpack patch [dir]                # Bump patch version (1.0.0 -> 1.0.1)
 tpack minor [dir]                # Bump minor version (1.0.0 -> 1.1.0)
@@ -49,6 +127,11 @@ tpack generate <type> [dir]      # Generate a specific file
   install-block                  #   Generate install block (outputs to console)
   install-block-tpack            #   Generate install block with tpack option (outputs to console)
   workflow-auto-release          #   Generate .github/workflows/release.yml
+```
+
+### Flags
+
+```bash
 tpack --dry-run                  # Preview changes without writing files
 tpack --yes, -y                  # Skip confirmation prompts
 tpack -v, --verbose              # Show detailed output (default: show only changes)
@@ -59,62 +142,8 @@ tpack --skip-version-check       # Skip version check on startup
 tpack --help                     # Show all commands and options
 ```
 
-## Getting Started
+### Configuration
 
-**1. Clone into your Talon directory:**
-
-```sh
-# mac and linux
-cd ~/.talon
-
-# windows
-cd ~/AppData/Roaming/talon
-
-git clone https://github.com/rokubop/talon-pack
-```
-
-**2. Run the setup script:**
-
-Auto-detects your OS and shell, adds the `tpack` alias + tab completion to your shell config, and shows the diff of what changed. Safe to re-run (skips if already set up).
-
-```bash
-# Mac / Linux
-bash ~/.talon/talon-pack/setup.sh
-
-# Windows (WSL / Git Bash)
-bash ~/AppData/Roaming/talon/talon-pack/setup.sh
-
-# Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File "$env:APPDATA\talon\talon-pack\setup.ps1"
-```
-
-Then reload your shell:
-```bash
-source ~/.zshrc   # or ~/.bashrc
-. $PROFILE        # PowerShell
-```
-
-Uses Talon's bundled Python, so no extra Python install needed.
-
-**3. Try it out:**
-
-```bash
-tpack info some_folder       # See what a folder contributes
-tpack --dry-run some_folder  # Preview changes without writing
-```
-
-**4. Run it on your repo:**
-
-```bash
-cd my_repo
-tpack
-```
-
-🎉 Done! Keep your manifest up to date by running `tpack` whenever you make changes.
-
-Having issues? See [Troubleshooting](#troubleshooting).
-
-## Configuration
 Edit `tpack.config.json` in the talon-pack directory to change default behavior:
 
 ```json
@@ -128,7 +157,7 @@ Edit `tpack.config.json` in the talon-pack directory to change default behavior:
 }
 ```
 
-## Version Bumping
+### Version Bumping
 
 Bump the version in `manifest.json` using semver:
 
@@ -138,20 +167,11 @@ tpack minor           # 1.0.0 -> 1.1.0
 tpack major           # 1.0.0 -> 2.0.0
 ```
 
-## Dependency Management
+---
 
-```bash
-tpack deps                        # Show all dependencies with install status
-tpack install                     # Install dependencies from manifest
-tpack install <github_url>        # Install a package (+ its dependencies)
-tpack update                      # Pull latest for all dependencies
-tpack outdated                    # Check for newer versions (local vs remote)
-tpack sync                        # Update all min_versions to installed versions
-tpack sync talon-mouse-rig        # Update a specific dependency's min_version
-tpack release                     # Create a GitHub release for the current version
-```
+## Reference
 
-## Example `manifest.json`
+### Example `manifest.json`
 
 ```json
 {
@@ -197,7 +217,7 @@ tpack release                     # Create a GitHub release for the current vers
 }
 ```
 
-## Example `README.md`
+### Example `README.md`
 
 ``````md
 # {manifest.title}
@@ -222,7 +242,7 @@ git clone {manifest.github}
 ```
 ``````
 
-## Example `_version.py` (no dependency check)
+### Example `_version.py` (no dependency check)
 
 ```py
 """
@@ -270,7 +290,7 @@ class Actions:
         return _get_version()
 ```
 
-## Example `_version.py` (with dependencies)
+### Example `_version.py` (with dependencies)
 ```py
 def validate_dependencies():
     """
@@ -336,9 +356,9 @@ def validate_dependencies():
 app.register("ready", validate_dependencies)
 ```
 
-## Example Talon log (dependency not met)
+### Example Talon log (dependency not met)
 
-### Missing
+#### Missing
 ```
 2026-01-20 23:20:16.971    IO ============================================================
 2026-01-20 23:20:16.971    IO talon-parrot-tester: dependency requirements not met
@@ -354,7 +374,7 @@ app.register("ready", validate_dependencies)
 2026-01-20 23:20:16.972    IO ============================================================
 ```
 
-### Outdated
+#### Outdated
 ```
 2026-01-20 23:17:18.112    IO ============================================================
 2026-01-20 23:17:18.112    IO talon-parrot-tester: dependency requirements not met
