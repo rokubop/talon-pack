@@ -1,6 +1,6 @@
 # Talon Pack
 
-![Version](https://img.shields.io/badge/version-3.2.3-blue)
+![Version](https://img.shields.io/badge/version-3.2.4-blue)
 ![Status](https://img.shields.io/badge/status-preview-orange)
 ![License](https://img.shields.io/badge/license-Unlicense-green)
 
