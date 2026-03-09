@@ -11,7 +11,7 @@ Usage:
   tpack major [dir]               Bump major version (1.0.0 -> 2.0.0)
   tpack version patch [dir]       Same as above (long form)
   tpack install [dir]              Install dependencies from manifest
-  tpack install <github_url>       Install a package (+ its dependencies)
+  tpack install <github_url>       Install a repo (+ its dependencies)
   tpack update [dir]               Pull latest for all dependencies
   tpack outdated [dir]             Check for newer versions (local vs remote)
   tpack sync [dep] [dir]           Update dependency min_version to installed version
@@ -39,11 +39,14 @@ Usage:
     install-block                  Generate install block (outputs to console)
     install-block-tpack            Generate install block with tpack option (outputs to console)
     workflow-auto-release          Generate .github/workflows/release.yml
-  tpack --dry-run                Preview changes without writing files
-  tpack --yes, -y                Skip confirmation prompts
-  tpack -v, --verbose            Show detailed output (default: show only changes)
-  tpack --search <path>           Search <path> for dependencies (relative or absolute)
-  tpack --help                   Show this help message
+  tpack --dry-run                  Preview changes without writing files
+  tpack --yes, -y                  Skip confirmation prompts
+  tpack -v, --verbose              Show detailed output (default: show only changes)
+  tpack --version, -V              Show tpack version
+  tpack --search <path>            Search <path> for dependencies (relative or absolute)
+  tpack --force                    Force operation (e.g. generate workflow without github URL)
+  tpack --skip-version-check       Skip version check on startup
+  tpack --help                     Show this help message
 
 Config:
   Edit tpack.config.json to change default behavior (which generators run by default).
