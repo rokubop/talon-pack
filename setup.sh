@@ -124,14 +124,19 @@ _tpack() {
   local -a commands=(
     'info' 'deps' 'patch' 'minor' 'major' 'version'
     'install' 'update' 'outdated' 'sync' 'release'
-    'status' 'duplicate-check' 'platform' 'pip' 'peer' 'generate' 'help'
+    'status' 'duplicate-check' 'platform' 'pip' 'generate' 'help'
   )
   local -a generate_types=(
     'manifest' 'version' 'readme' 'shields'
     'install-block' 'install-block-tpack' 'workflow-auto-release'
   )
   local -a pip_cmds=('add' 'remove' 'list')
-  local -a peer_cmds=('add' 'remove' 'list')
+  local -a deps_cmds=(
+    'add:add <pkg> [--optional] [--dev] [--description "..."]'
+    'remove:remove <pkg>'
+    'set:set <pkg> [--optional] [--dev] [--no-optional] [--no-dev] ...'
+    '--help:show deps help'
+  )
   local -a platform_cmds=('add' 'remove')
   local -a platform_values=('windows' 'mac' 'linux')
   local -a status_values=(
@@ -150,7 +155,7 @@ _tpack() {
     case ${words[2]} in
       generate) _describe 'type' generate_types ;;
       pip) _describe 'pip command' pip_cmds ;;
-      peer) _describe 'peer command' peer_cmds ;;
+      deps) _describe 'deps command' deps_cmds ;;
       status) _describe 'status' status_values ;;
       duplicate-check) _describe 'value' duplicate_check_values ;;
       platform) _describe 'platform command' platform_cmds ;;
@@ -174,10 +179,10 @@ _tpack() {
   local cur prev commands generate_types pip_cmds flags
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
-  commands="info deps patch minor major version install update outdated sync release status duplicate-check platform pip peer generate help"
+  commands="info deps patch minor major version install update outdated sync release status duplicate-check platform pip generate help"
   generate_types="manifest version readme shields install-block install-block-tpack workflow-auto-release"
   pip_cmds="add remove list"
-  peer_cmds="add remove list"
+  deps_cmds="add remove set --help"
   platform_cmds="add remove"
   platform_values="windows mac linux"
   status_values="reference prototype experimental preview stable deprecated archived"
@@ -190,7 +195,7 @@ _tpack() {
     case "$prev" in
       generate) COMPREPLY=($(compgen -W "$generate_types" -- "$cur")) ;;
       pip) COMPREPLY=($(compgen -W "$pip_cmds" -- "$cur")) ;;
-      peer) COMPREPLY=($(compgen -W "$peer_cmds" -- "$cur")) ;;
+      deps) COMPREPLY=($(compgen -W "$deps_cmds" -- "$cur")) ;;
       status) COMPREPLY=($(compgen -W "$status_values" -- "$cur")) ;;
       duplicate-check) COMPREPLY=($(compgen -W "$duplicate_check_values" -- "$cur")) ;;
       platform) COMPREPLY=($(compgen -W "$platform_cmds" -- "$cur")) ;;

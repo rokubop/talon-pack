@@ -69,10 +69,8 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
     warnings = []
 
     dependencies = manifest.get("dependencies", {})
-    peer_dependencies = manifest.get("peerDependencies", {})
-    dev_dependencies = manifest.get("devDependencies", {})
     bundled_dependencies = manifest.get("bundledDependencies", {})
-    all_deps = {**dependencies, **peer_dependencies, **dev_dependencies, **bundled_dependencies}
+    all_deps = {**dependencies, **bundled_dependencies}
 
     for dep_name, dep_info in all_deps.items():
         version = dep_info.get("min_version") or dep_info.get("version", "")
@@ -109,10 +107,10 @@ def update_dependency_versions(content: str, manifest: dict) -> tuple[str, list[
             github_mentioned = github and github in content
             name_mentioned = dep_name in content
 
-            if not github_mentioned and not name_mentioned:
+            if not github_mentioned and not name_mentioned and not dep_info.get('optional') and not dep_info.get('dev_only'):
                 warnings.append(
                     f"{dep_name} not mentioned in README. "
-                    f"Run `tpack generate install-block` to see the install block"
+                    f"Run `tpack generate install-block` or `tpack generate install-block-tpack` to see the install block"
                 )
 
     return content, actions, warnings
@@ -203,7 +201,7 @@ def update_existing_readme(content: str, manifest: dict, package_dir: Path) -> t
         pip_names = ", ".join(sorted(pip_deps.keys()))
         dep_warnings.append(
             f"pip dependencies ({pip_names}) not mentioned in README. "
-            f"Run `tpack generate install-block` to see the pip install block"
+            f"Run `tpack generate install-block` or `tpack generate install-block-tpack` to see the pip install block"
         )
 
     return content, actions, dep_warnings

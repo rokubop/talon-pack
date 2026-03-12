@@ -28,9 +28,10 @@ Usage:
   tpack pip add <pkg> [dir]        Add pip dependency (e.g. vgamepad, vgamepad>=1.0.0)
   tpack pip remove <pkg> [dir]     Remove pip dependency
   tpack pip list [dir]             List pip dependencies
-  tpack peer add <pkg|url> [dir]   Add peer dependency (package name or GitHub URL)
-  tpack peer remove <pkg> [dir]    Remove peer dependency
-  tpack peer list [dir]            List peer dependencies
+  tpack deps add <pkg|url> [dir]   Add dependency [--optional] [--dev] [--description "..."]
+  tpack deps remove <pkg> [dir]    Remove dependency
+  tpack deps set <pkg> [dir]      Set properties [--optional] [--dev] [--description "..."]
+                                   Use --no-optional, --no-dev, --no-description to remove
   tpack generate <type> [dir]      Generate a specific file
     manifest                       Generate manifest.json
     version                        Generate _version.py
@@ -566,7 +567,15 @@ def info_command(directory: Path) -> bool:
                 min_ver = dep_info.get('min_version') or dep_info.get('version', '')
                 dep_github = dep_info.get('github', '')
                 ver_display = f" >={min_ver}" if min_ver else ""
-                print(f"  {dep_name}{ver_display}")
+                suffix_parts = []
+                if dep_info.get('optional'):
+                    suffix_parts.append("optional")
+                if dep_info.get('dev_only'):
+                    suffix_parts.append("dev only")
+                if dep_info.get('description'):
+                    suffix_parts.append(dep_info['description'])
+                suffix = f"  {DIM}({', '.join(suffix_parts)}){RESET}" if suffix_parts else ""
+                print(f"  {dep_name}{ver_display}{suffix}")
                 if dep_github:
                     print(f"    {DIM}{dep_github}{RESET}")
 
@@ -805,18 +814,21 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
             manifest = json.load(f)
 
         dependencies = manifest.get('dependencies', {})
-        peer_deps = manifest.get('peerDependencies', {})
-        dev_deps = manifest.get('devDependencies', {})
         bundled_deps = manifest.get('bundledDependencies', {})
         pip_deps = manifest.get('pipDependencies', {})
 
-        has_any = dependencies or peer_deps or dev_deps or bundled_deps or pip_deps
+        has_any = dependencies or bundled_deps or pip_deps
 
         if not has_any:
             pkg_name = manifest.get('name', directory.name)
             print(f"\n{CYAN}{pkg_name}/{RESET}")
             print(f"{DIM}No dependencies.{RESET}\n")
             return True
+
+        # Split dependencies by properties
+        required_deps = {k: v for k, v in dependencies.items() if not v.get('optional') and not v.get('dev_only')}
+        optional_deps = {k: v for k, v in dependencies.items() if v.get('optional')}
+        dev_deps = {k: v for k, v in dependencies.items() if v.get('dev_only')}
 
         # Scan installed versions
         talon_user_dir = search_dir or find_talon_user_dir()
@@ -840,6 +852,7 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                 version = dep_info.get('min_version') or dep_info.get('version', '')
                 required_by = dep_info.get('required_by', [])
                 platforms = dep_info.get('platforms', [])
+                description = dep_info.get('description', '')
 
                 if is_bundled:
                     status = f"{DIM}bundled{RESET}"
@@ -860,6 +873,8 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                     status = f"{RED}not installed{RESET}"
 
                 suffix_parts = []
+                if description:
+                    suffix_parts.append(description)
                 if platforms and set(platforms) < {"windows", "mac", "linux"}:
                     names = [p.capitalize() if p != "mac" else "Mac" for p in sorted(platforms)]
                     suffix_parts.append(f"{'/'.join(names)} only")
@@ -897,8 +912,8 @@ def deps_command(directory: Path, search_dir: str = None) -> bool:
                 ver_display = f"  {version}" if version and version != '*' else ""
                 print(f"    {pip_name}{ver_display}  {status}{suffix}")
 
-        print_dep_section("Dependencies", dependencies)
-        print_dep_section("Peer Dependencies", peer_deps)
+        print_dep_section("Dependencies", required_deps)
+        print_dep_section("Optional Dependencies", optional_deps)
         print_dep_section("Bundled Dependencies", bundled_deps, is_bundled=True)
         print_pip_section(pip_deps)
         print_dep_section("Dev Dependencies", dev_deps)
@@ -1040,14 +1055,14 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
         with open(manifest_path, 'r', encoding='utf-8') as f:
             manifest = json.load(f)
 
-        dependencies = manifest.get('dependencies', {})
-        peer_deps = manifest.get('peerDependencies', {})
+        all_dependencies = manifest.get('dependencies', {})
         pip_deps = manifest.get('pipDependencies', {})
 
-        # Merge peer dependencies into the install list
-        all_deps = {**dependencies, **peer_deps}
+        # Split by properties
+        required_deps = {k: v for k, v in all_dependencies.items() if not v.get('optional') and not v.get('dev_only')}
+        optional_deps = {k: v for k, v in all_dependencies.items() if v.get('optional')}
 
-        if not all_deps and not pip_deps:
+        if not all_dependencies and not pip_deps:
             print(f"\n{DIM}No dependencies found in {directory.name}/manifest.json{RESET}")
             return True
 
@@ -1058,10 +1073,10 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
 
         installed = scan_installed_versions(talon_user_dir)
 
-        # Determine what needs to be installed
+        # Determine what needs to be installed (required deps only)
         to_clone = []
         already_installed = []
-        for dep_name, dep_info in sorted(all_deps.items()):
+        for dep_name, dep_info in sorted(required_deps.items()):
             github_url = dep_info.get('github', '')
             if dep_name in installed:
                 already_installed.append(dep_name)
@@ -1159,6 +1174,41 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
                     print(f"  {RED}Error running pip: {e}{RESET}")
                     success = False
 
+        # Prompt for optional dependencies
+        if optional_deps and not dry_run:
+            optional_candidates = []
+            for dep_name, dep_info in sorted(optional_deps.items()):
+                if dep_name in installed:
+                    continue
+                github_url = dep_info.get('github', '')
+                if github_url:
+                    clone_target_opt = os.path.join(talon_user_dir, repo_name_from_url(github_url))
+                    if not os.path.exists(clone_target_opt):
+                        optional_candidates.append((dep_name, dep_info))
+
+            if optional_candidates:
+                print(f"\n  {CYAN}Optional dependencies:{RESET}")
+                for dep_name, dep_info in optional_candidates:
+                    github_url = dep_info.get('github', '')
+                    description = dep_info.get('description', '')
+                    desc_display = f" ({description})" if description else ""
+                    if confirm_action(f"  Install {dep_name}?{desc_display}", auto_yes=False):
+                        clone_target_opt = os.path.join(talon_user_dir, repo_name_from_url(github_url))
+                        print(f"\n  Cloning {dep_name}...")
+                        try:
+                            result = subprocess.run(
+                                ["git", "clone", github_url, clone_target_opt],
+                                capture_output=True, text=True
+                            )
+                            if result.returncode == 0:
+                                print(f"  {GREEN}Cloned {dep_name}{RESET}")
+                            else:
+                                print(f"  {RED}Failed to clone {dep_name}: {result.stderr.strip()}{RESET}")
+                                success = False
+                        except Exception as e:
+                            print(f"  {RED}Error cloning {dep_name}: {e}{RESET}")
+                            success = False
+
         print()
         return success
     except Exception as e:
@@ -1195,7 +1245,10 @@ def install_from_url(url: str, dry_run: bool = False, auto_yes: bool = False) ->
 
     if remote_manifest:
         deps = remote_manifest.get('dependencies', {})
+        # Only auto-install required deps (not optional or dev_only)
         for dep_name, dep_info in sorted(deps.items()):
+            if dep_info.get('optional') or dep_info.get('dev_only'):
+                continue
             if dep_name in installed:
                 continue
             github_url = dep_info.get('github', '')
@@ -1277,6 +1330,43 @@ def install_from_url(url: str, dry_run: bool = False, auto_yes: bool = False) ->
             except Exception as e:
                 print(f"  {RED}Error running pip: {e}{RESET}")
                 success = False
+
+    # Prompt for optional dependencies
+    if remote_manifest and not dry_run:
+        optional_deps = {k: v for k, v in deps.items() if v.get('optional')}
+        optional_candidates = []
+        for dep_name, dep_info in sorted(optional_deps.items()):
+            if dep_name in installed:
+                continue
+            github_url = dep_info.get('github', '')
+            if github_url:
+                dep_repo = repo_name_from_url(github_url)
+                dep_target = os.path.join(talon_user_dir, dep_repo)
+                if not os.path.exists(dep_target):
+                    optional_candidates.append((dep_name, dep_info))
+
+        if optional_candidates:
+            print(f"\n  {CYAN}Optional dependencies:{RESET}")
+            for dep_name, dep_info in optional_candidates:
+                github_url = dep_info.get('github', '')
+                description = dep_info.get('description', '')
+                desc_display = f" ({description})" if description else ""
+                if confirm_action(f"  Install {dep_name}?{desc_display}", auto_yes=False):
+                    dep_target = os.path.join(talon_user_dir, repo_name_from_url(github_url))
+                    print(f"\n  Cloning {dep_name}...")
+                    try:
+                        result = subprocess.run(
+                            ["git", "clone", github_url, dep_target],
+                            capture_output=True, text=True
+                        )
+                        if result.returncode == 0:
+                            print(f"  {GREEN}Cloned {dep_name}{RESET}")
+                        else:
+                            print(f"  {RED}Failed to clone {dep_name}: {result.stderr.strip()}{RESET}")
+                            success = False
+                    except Exception as e:
+                        print(f"  {RED}Error cloning {dep_name}: {e}{RESET}")
+                        success = False
 
     print()
     return success
@@ -1683,7 +1773,7 @@ def pip_command(action: str, package_spec: str | None, directory: Path, dry_run:
                 pip_deps[name] = info
 
             manifest['pipDependencies'] = dict(sorted(pip_deps.items()))
-            manifest = reorder_manifest_key(manifest, 'pipDependencies', 'devDependencies')
+            manifest = reorder_manifest_key(manifest, 'pipDependencies', 'dependencies')
 
             new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
 
@@ -1782,8 +1872,9 @@ def pip_command(action: str, package_spec: str | None, directory: Path, dry_run:
         return False
 
 
-def peer_command(action: str, package_spec: str | None, directory: Path, dry_run: bool = False) -> bool:
-    """Add, remove, or list peer dependencies."""
+def deps_modify_command(action: str, package_spec: str | None, directory: Path, dry_run: bool = False,
+                        optional: bool = False, dev: bool = False, description: str = "") -> bool:
+    """Add or remove dependencies with optional/dev flags."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET, diff_json, format_diff_output
 
     manifest_path = directory / "manifest.json"
@@ -1794,7 +1885,7 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
     if action == "add":
         if not package_spec:
             print(f"{RED}Error: package name or GitHub URL required{RESET}")
-            print(f"Usage: tpack peer add <package|github_url> [directory]")
+            print(f"Usage: tpack deps add <package|github_url> [--optional] [--dev] [--description \"...\"]")
             return False
 
         try:
@@ -1802,14 +1893,12 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                 old_content = f.read()
                 manifest = json.loads(old_content)
 
-            peer_deps = manifest.get('peerDependencies', {})
+            deps = manifest.get('dependencies', {})
 
             # Resolve package info from URL or installed packages
             if package_spec.startswith('http'):
-                # GitHub URL provided
                 url = package_spec.rstrip('/')
                 name = repo_name_from_url(url)
-                # Try to find installed version for namespace/version
                 talon_user_dir = find_talon_user_dir()
                 installed = scan_installed_versions(talon_user_dir) if talon_user_dir else {}
                 if name in installed:
@@ -1825,7 +1914,6 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                     if pkg_manifest.get("platforms"):
                         info["platforms"] = pkg_manifest["platforms"]
                 else:
-                    # Not installed locally, try fetching remote manifest
                     remote_manifest = fetch_remote_manifest(url)
                     if remote_manifest:
                         info = {
@@ -1839,7 +1927,6 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                         print(f"{RED}Error: Could not resolve package info for {url}{RESET}")
                         return False
             else:
-                # Package name provided - look up from installed packages
                 name = package_spec
                 talon_user_dir = find_talon_user_dir()
                 if not talon_user_dir:
@@ -1849,7 +1936,6 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                 if name not in installed:
                     print(f"{RED}Error: '{name}' is not installed. Provide a GitHub URL instead.{RESET}")
                     if installed:
-                        # Suggest similar names
                         similar = [n for n in installed if name in n or n in name]
                         if similar:
                             print(f"{DIM}Similar installed packages: {', '.join(sorted(similar))}{RESET}")
@@ -1866,13 +1952,20 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                 if pkg_manifest.get("platforms"):
                     info["platforms"] = pkg_manifest["platforms"]
 
-            if name in peer_deps:
-                print(f"{DIM}{name} is already in peerDependencies{RESET}")
+            if name in deps:
+                print(f"{DIM}{name} is already in dependencies{RESET}")
                 return True
 
-            peer_deps[name] = info
-            manifest['peerDependencies'] = dict(sorted(peer_deps.items()))
-            manifest = reorder_manifest_key(manifest, 'peerDependencies', 'dependencies')
+            # Set properties based on flags
+            if optional:
+                info["optional"] = True
+            if dev:
+                info["dev_only"] = True
+            if description:
+                info["description"] = description
+
+            deps[name] = info
+            manifest['dependencies'] = dict(sorted(deps.items()))
 
             new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
 
@@ -1881,10 +1974,11 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
             if has_changes:
                 print(format_diff_output(diff_output))
 
+            flag_label = " (optional)" if optional else " (dev)" if dev else ""
             if not dry_run:
                 with open(manifest_path, 'w', encoding='utf-8') as f:
                     f.write(new_content)
-                print(f"{GREEN}Added {name} to peerDependencies{RESET}")
+                print(f"{GREEN}Added {name} to dependencies{flag_label}{RESET}")
             else:
                 print(f"{DIM}(dry run - no files modified){RESET}")
 
@@ -1896,7 +1990,7 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
     elif action == "remove":
         if not package_spec:
             print(f"{RED}Error: package name required{RESET}")
-            print(f"Usage: tpack peer remove <package> [directory]")
+            print(f"Usage: tpack deps remove <package>")
             return False
 
         try:
@@ -1904,19 +1998,16 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
                 old_content = f.read()
                 manifest = json.loads(old_content)
 
-            peer_deps = manifest.get('peerDependencies', {})
+            deps = manifest.get('dependencies', {})
 
-            if package_spec not in peer_deps:
-                print(f"{RED}Error: '{package_spec}' is not in peerDependencies{RESET}")
-                if peer_deps:
-                    print(f"{DIM}Current peer dependencies: {', '.join(sorted(peer_deps.keys()))}{RESET}")
+            if package_spec not in deps:
+                print(f"{RED}Error: '{package_spec}' is not in dependencies{RESET}")
+                if deps:
+                    print(f"{DIM}Current dependencies: {', '.join(sorted(deps.keys()))}{RESET}")
                 return False
 
-            del peer_deps[package_spec]
-            if peer_deps:
-                manifest['peerDependencies'] = peer_deps
-            elif 'peerDependencies' in manifest:
-                del manifest['peerDependencies']
+            del deps[package_spec]
+            manifest['dependencies'] = deps
 
             new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
 
@@ -1928,7 +2019,7 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
             if not dry_run:
                 with open(manifest_path, 'w', encoding='utf-8') as f:
                     f.write(new_content)
-                print(f"{GREEN}Removed {package_spec} from peerDependencies{RESET}")
+                print(f"{GREEN}Removed {package_spec} from dependencies{RESET}")
             else:
                 print(f"{DIM}(dry run - no files modified){RESET}")
 
@@ -1937,26 +2028,74 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
             print(f"{RED}Error: {e}{RESET}")
             return False
 
-    elif action == "list":
+    elif action == "set":
+        if not package_spec:
+            print(f"{RED}Error: package name required{RESET}")
+            print(f"Usage: tpack deps set <package> [--optional] [--dev] [--description \"...\"]")
+            print(f"       Use --no-optional, --no-dev, --no-description to remove properties")
+            return False
+
         try:
             with open(manifest_path, 'r', encoding='utf-8') as f:
-                manifest = json.load(f)
+                old_content = f.read()
+                manifest = json.loads(old_content)
 
-            peer_deps = manifest.get('peerDependencies', {})
-            if not peer_deps:
-                print(f"{DIM}No peer dependencies in {directory.name}{RESET}")
+            deps = manifest.get('dependencies', {})
+
+            if package_spec not in deps:
+                print(f"{RED}Error: '{package_spec}' is not in dependencies{RESET}")
+                if deps:
+                    print(f"{DIM}Current dependencies: {', '.join(sorted(deps.keys()))}{RESET}")
+                return False
+
+            info = deps[package_spec]
+            no_optional = "--no-optional" in sys.argv
+            no_dev = "--no-dev" in sys.argv
+            no_description = "--no-description" in sys.argv
+
+            changes = []
+
+            if optional and not info.get("optional"):
+                info["optional"] = True
+                changes.append("set optional")
+            elif no_optional and info.get("optional"):
+                del info["optional"]
+                changes.append("removed optional")
+
+            if dev and not info.get("dev_only"):
+                info["dev_only"] = True
+                changes.append("set dev_only")
+            elif no_dev and info.get("dev_only"):
+                del info["dev_only"]
+                changes.append("removed dev_only")
+
+            if description:
+                info["description"] = description
+                changes.append(f"set description")
+            elif no_description and "description" in info:
+                del info["description"]
+                changes.append("removed description")
+
+            if not changes:
+                print(f"{DIM}No property changes for {package_spec}{RESET}")
                 return True
 
-            print(f"\n{CYAN}{directory.name}{RESET} peer dependencies:")
-            for name, info in sorted(peer_deps.items()):
-                version = info.get('min_version', '')
-                namespace = info.get('namespace', '')
-                parts = [f"  {name}"]
-                if version:
-                    parts.append(f" ({version})")
-                if namespace:
-                    parts.append(f" {DIM}{namespace}{RESET}")
-                print("".join(parts))
+            deps[package_spec] = info
+            manifest['dependencies'] = deps
+
+            new_content = json.dumps(manifest, indent=2, ensure_ascii=False)
+
+            print(f"\n{CYAN}{directory.name}/{RESET}")
+            has_changes, diff_output = diff_json(old_content, new_content, "manifest.json")
+            if has_changes:
+                print(format_diff_output(diff_output))
+
+            if not dry_run:
+                with open(manifest_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                print(f"{GREEN}Updated {package_spec}: {', '.join(changes)}{RESET}")
+            else:
+                print(f"{DIM}(dry run - no files modified){RESET}")
 
             return True
         except Exception as e:
@@ -1964,10 +2103,10 @@ def peer_command(action: str, package_spec: str | None, directory: Path, dry_run
             return False
 
     else:
-        print(f"{RED}Unknown peer action: {action}{RESET}")
-        print(f"Usage: tpack peer add <package>       Add peer dependency")
-        print(f"       tpack peer remove <package>   Remove peer dependency")
-        print(f"       tpack peer list               List peer dependencies")
+        print(f"{RED}Unknown deps action: {action}{RESET}")
+        print(f"Usage: tpack deps add <package> [--optional] [--dev] [--description \"...\"]")
+        print(f"       tpack deps remove <package>")
+        print(f"       tpack deps set <package> [--optional] [--dev] [--description \"...\"]")
         return False
 
 
@@ -2111,7 +2250,7 @@ def process_directory(package_dir: Path, dry_run: bool = False, verbose: bool = 
 
 
 def main():
-    if "--help" in sys.argv or "-h" in sys.argv:
+    if ("--help" in sys.argv or "-h" in sys.argv) and "deps" not in sys.argv:
         print(__doc__)
         sys.exit(0)
 
@@ -2140,7 +2279,8 @@ def main():
     known_flags = {
         '--dry-run', '--yes', '-y', '-v', '--verbose', '--search',
         '--help', '-h', '--version', '-V', '--force',
-        '--skip-version-check',
+        '--skip-version-check', '--optional', '--dev', '--description',
+        '--no-optional', '--no-dev', '--no-description',
     }
     for i, arg in enumerate(sys.argv[1:], 1):
         if arg.startswith('-') and arg not in known_flags:
@@ -2150,17 +2290,26 @@ def main():
             subcommands = [
                 'info', 'deps', 'patch', 'minor', 'major', 'version',
                 'install', 'update', 'outdated', 'sync', 'release',
-                'status', 'duplicate-check', 'platform', 'pip', 'peer', 'generate', 'help',
+                'status', 'duplicate-check', 'platform', 'pip', 'generate', 'help',
             ]
             bare = arg.lstrip('-')
             if bare in subcommands:
                 print(f"{YELLOW}Did you mean: tpack {bare}{RESET}")
             sys.exit(1)
 
-    args = [a for a in sys.argv[1:] if not a.startswith('-')]
-    # Remove the --search value from args (it's not a flag, so it wasn't filtered)
-    if search_dir:
-        args = [a for a in args if a != search_dir_raw]
+    # Build positional args, skipping values that follow flags like --search and --description
+    flags_with_values = {'--search', '--description'}
+    args = []
+    skip_next = False
+    for a in sys.argv[1:]:
+        if skip_next:
+            skip_next = False
+            continue
+        if a in flags_with_values:
+            skip_next = True
+            continue
+        if not a.startswith('-'):
+            args.append(a)
 
     # tpack info [directory]
     if len(args) >= 1 and args[0] == 'info':
@@ -2169,9 +2318,55 @@ def main():
         sys.exit(0 if success else 1)
 
     # tpack deps [directory]
+    # tpack deps add <package|url> [directory] [--optional] [--dev] [--description "..."]
+    # tpack deps remove <package> [directory]
     if len(args) >= 1 and args[0] == 'deps':
-        directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
-        success = deps_command(directory, search_dir)
+        dry_run = "--dry-run" in sys.argv
+        is_optional = "--optional" in sys.argv
+        is_dev = "--dev" in sys.argv
+        is_help = "--help" in sys.argv or "-h" in sys.argv
+        description = ""
+        for i, arg in enumerate(sys.argv):
+            if arg == '--description' and i + 1 < len(sys.argv):
+                description = sys.argv[i + 1]
+                break
+        if is_help or (len(args) == 1 and not Path(".").resolve().joinpath("manifest.json").exists()):
+            from diff_utils import CYAN, DIM, RESET
+            print(f"\n{CYAN}tpack deps{RESET} - Manage dependencies\n")
+            print(f"  tpack deps                  List dependencies and install status")
+            print(f"  tpack deps add <pkg|url>    Add dependency")
+            print(f"  tpack deps remove <pkg>     Remove dependency")
+            print(f"  tpack deps set <pkg>        Modify dependency properties\n")
+            print(f"{DIM}Flags for add/set:{RESET}")
+            print(f"  --optional                  Mark as optional (prompted Y/N during install)")
+            print(f"  --dev                       Mark as dev-only (skipped during install)")
+            print(f"  --description \"...\"          Add description\n")
+            print(f"{DIM}Flags for set (remove properties):{RESET}")
+            print(f"  --no-optional               Remove optional flag")
+            print(f"  --no-dev                    Remove dev_only flag")
+            print(f"  --no-description            Remove description")
+            sys.exit(0)
+        if len(args) >= 2 and args[1] == 'add':
+            package_spec = args[2] if len(args) >= 3 else None
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = deps_modify_command("add", package_spec, directory, dry_run, is_optional, is_dev, description)
+        elif len(args) >= 2 and args[1] == 'remove':
+            package_spec = args[2] if len(args) >= 3 else None
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = deps_modify_command("remove", package_spec, directory, dry_run)
+        elif len(args) >= 2 and args[1] == 'set':
+            package_spec = args[2] if len(args) >= 3 else None
+            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
+            success = deps_modify_command("set", package_spec, directory, dry_run, is_optional, is_dev, description)
+        elif len(args) >= 2 and args[1] not in ('add', 'remove', 'set') and (is_optional or is_dev or description or
+                "--no-optional" in sys.argv or "--no-dev" in sys.argv or "--no-description" in sys.argv):
+            # Shorthand: tpack deps <pkg> --optional => tpack deps set <pkg> --optional
+            package_spec = args[1]
+            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
+            success = deps_modify_command("set", package_spec, directory, dry_run, is_optional, is_dev, description)
+        else:
+            directory = Path(args[1]).resolve() if len(args) >= 2 else Path(".").resolve()
+            success = deps_command(directory, search_dir)
         sys.exit(0 if success else 1)
 
     # tpack version patch/minor/major [directory]
@@ -2403,32 +2598,6 @@ def main():
             sys.exit(1)
         sys.exit(0 if success else 1)
 
-    # tpack peer add <package|url> [directory]
-    # tpack peer remove <package> [directory]
-    # tpack peer list [directory]
-    if len(args) >= 1 and args[0] == 'peer':
-        dry_run = "--dry-run" in sys.argv
-        if len(args) >= 2 and args[1] == 'remove':
-            package_spec = args[2] if len(args) >= 3 else None
-            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
-            success = peer_command("remove", package_spec, directory, dry_run)
-        elif len(args) >= 2 and args[1] == 'list':
-            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
-            success = peer_command("list", None, directory, dry_run)
-        elif len(args) >= 3 and args[1] == 'add':
-            package_spec = args[2]
-            directory = Path(args[3]).resolve() if len(args) >= 4 else Path(".").resolve()
-            success = peer_command("add", package_spec, directory, dry_run)
-        elif len(args) >= 2:
-            package_spec = args[1]
-            directory = Path(args[2]).resolve() if len(args) >= 3 else Path(".").resolve()
-            success = peer_command("add", package_spec, directory, dry_run)
-        else:
-            print("Usage: tpack peer add <package>       Add peer dependency")
-            print("       tpack peer remove <package>   Remove peer dependency")
-            print("       tpack peer list               List peer dependencies")
-            sys.exit(1)
-        sys.exit(0 if success else 1)
 
     # tpack generate <type> [directory]
     if len(args) >= 1 and args[0] == 'generate':

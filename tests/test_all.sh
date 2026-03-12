@@ -39,7 +39,7 @@ run_suite() {
 run_suite "Core Tests" "test_tpack.sh"
 run_suite "Setup Tests" "test_setup.sh"
 
-# Install tests need network — skip with --no-network
+# Install tests need network - skip with --no-network
 if [[ "${1:-}" != "--no-network" ]]; then
     run_suite "Install Tests (network)" "test_install.sh"
 else

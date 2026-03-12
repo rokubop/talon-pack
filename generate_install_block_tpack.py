@@ -9,18 +9,20 @@ _script_dir = str(Path(__file__).parent.resolve())
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
-from generate_install_block import generate_pip_install_commands, _platform_suffix
+from generate_install_block import generate_pip_install_commands, _platform_suffix, _split_dependencies
 
 
 def generate_installation_markdown_tpack(manifest: dict) -> str:
     """Generate installation section with two options: tpack and manual clone."""
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
-    peer_dependencies = manifest.get('peerDependencies', {})
-    dev_dependencies = manifest.get('devDependencies', {})
     bundled_dependencies = manifest.get('bundledDependencies', {})
     pip_dependencies = manifest.get('pipDependencies', {})
     requires = manifest.get('requires', [])
+
+    # Split dependencies by properties
+    required_direct, transitive_deps, optional_deps, dev_deps = _split_dependencies(dependencies)
+    required_deps = {**required_direct, **transitive_deps}
 
     # Map requirement keys to user-friendly descriptions
     requirement_descriptions = {
@@ -36,13 +38,26 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
     lines.append("")
     lines.append("Install using [talon-pack](https://github.com/rokubop/talon-pack) or manually clone the repositories.")
 
+    # Option 1: Using talon-pack
+    lines.append("\n### Option 1: Using talon-pack")
+    lines.append("")
+    lines.append("Set up [talon-pack](https://github.com/rokubop/talon-pack), then run:")
+    lines.append("")
+    lines.append("```sh")
+    if github_url:
+        lines.append(f"tpack install {github_url}")
+    else:
+        lines.append("tpack install <github_url>  # Add github URL to manifest.json")
+    lines.append("```")
+
+    # Option 2: Manual clone header
+    lines.append("\n### Option 2: Manual Clone")
+
     # Dependencies section
     has_requirements = bool(requires)
-    has_dependencies = bool(dependencies)
-    has_peer = bool(peer_dependencies)
     has_bundled = bool(bundled_dependencies)
     has_pip = bool(pip_dependencies)
-    has_any_deps = has_requirements or has_dependencies or has_peer or has_bundled or has_pip
+    has_any_deps = has_requirements or bool(dependencies) or has_bundled or has_pip
 
     if has_any_deps:
         lines.append("\n### Dependencies")
@@ -59,18 +74,9 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
                 description = requirement_descriptions.get(req, f"**{req}**")
                 lines.append(f"- {description}")
 
-        # Split dependencies into direct and transitive
-        direct_deps = {}
-        transitive_deps = {}
-        if has_dependencies:
-            for dep_name, dep_info in dependencies.items():
-                if dep_info.get('required_by'):
-                    transitive_deps[dep_name] = dep_info
-                else:
-                    direct_deps[dep_name] = dep_info
-
-        if direct_deps:
-            for dep_name, dep_info in direct_deps.items():
+        # Add direct required dependencies
+        if required_direct:
+            for dep_name, dep_info in required_direct.items():
                 version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
@@ -80,6 +86,7 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}**{ver_str}{plat}")
 
+        # Add transitive dependencies
         if transitive_deps:
             for dep_name, dep_info in transitive_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', '')
@@ -93,13 +100,22 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}**{ver_str}{plat}{suffix}")
 
-        if has_peer:
-            for dep_name, dep_info in peer_dependencies.items():
+        # Add optional dependencies
+        if optional_deps:
+            for dep_name, dep_info in optional_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
-                suffix = " *(peer dependency)*"
+                description = dep_info.get('description', '')
+                required_by = dep_info.get('required_by', [])
+                if description:
+                    desc_suffix = f" - {description}"
+                elif required_by:
+                    desc_suffix = f" - required by {', '.join(required_by)}"
+                else:
+                    desc_suffix = ""
                 ver_str = f" (v{version}+)" if version else ""
+                suffix = f" *(optional)*{desc_suffix}"
                 if github:
                     lines.append(f"- [**{dep_name}**]({github}){ver_str}{plat}{suffix}")
                 else:
@@ -144,22 +160,7 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
         lines.append(f"\n### {pip_heading}")
         lines.append(f"\n{pip_commands}")
 
-    # Option 1: Using talon-pack
-    lines.append("\n### Option 1: Using talon-pack")
-    lines.append("")
-    lines.append("Set up [talon-pack](https://github.com/rokubop/talon-pack), then run:")
-    lines.append("")
-    lines.append("```sh")
-    if github_url:
-        lines.append(f"tpack install {github_url}")
-    else:
-        lines.append("tpack install <github_url>  # Add github URL to manifest.json")
-    lines.append("```")
-
-    # Option 2: Manual clone
-    lines.append("\n### Option 2: Manual Clone")
-
-    if dependencies or peer_dependencies:
+    if required_deps or optional_deps:
         lines.append("\nClone the dependencies and this repo into your [Talon](https://talonvoice.com/) user directory:")
     else:
         lines.append("\nClone this repo into your [Talon](https://talonvoice.com/) user directory:")
@@ -171,37 +172,34 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
     lines.append("# Windows")
     lines.append("cd ~/AppData/Roaming/talon/user")
 
-    if dependencies:
+    # Required dependencies clones
+    if required_direct:
         lines.append("")
         lines.append("# Dependencies")
-        for dep_name, dep_info in dependencies.items():
-            if dep_info.get('required_by'):
-                continue
+        for dep_name, dep_info in required_direct.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
 
-        has_transitive = any(dep_info.get('required_by') for dep_info in dependencies.values())
-        if has_transitive:
-            lines.append("")
-            lines.append("# Also required (by dependencies above)")
-            for dep_name, dep_info in dependencies.items():
-                if not dep_info.get('required_by'):
-                    continue
-                github = dep_info.get('github', '')
-                if github:
-                    lines.append(f"git clone {github}")
-
-    # Peer dependencies clones
-    if peer_dependencies:
+    # Transitive dependencies
+    if transitive_deps:
         lines.append("")
-        lines.append("# Peer dependencies (recommended)")
-        for dep_name, dep_info in peer_dependencies.items():
+        lines.append("# Also required (by dependencies above)")
+        for dep_name, dep_info in transitive_deps.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
 
-    if dependencies or peer_dependencies or dev_dependencies:
+    # Optional dependencies clones
+    if optional_deps:
+        lines.append("")
+        lines.append("# Optional dependencies")
+        for dep_name, dep_info in optional_deps.items():
+            github = dep_info.get('github', '')
+            if github:
+                lines.append(f"git clone {github}")
+
+    if required_deps or optional_deps or dev_deps:
         lines.append("")
         lines.append("# This repo")
     else:
@@ -214,11 +212,11 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
     lines.append("```")
 
     # Dev dependencies
-    if dev_dependencies:
+    if dev_deps:
         lines.append("\n### Development Dependencies")
         lines.append("\nOptional dependencies for development and testing:")
 
-        for dep_name, dep_info in dev_dependencies.items():
+        for dep_name, dep_info in dev_deps.items():
             version = dep_info.get('min_version') or dep_info.get('version', '')
             github = dep_info.get('github', '')
             version_suffix = f" (v{version}+)" if version else ""
@@ -228,14 +226,14 @@ def generate_installation_markdown_tpack(manifest: dict) -> str:
                 lines.append(f"- **{dep_name}**{version_suffix}")
 
         lines.append("\n```sh")
-        for dep_name, dep_info in dev_dependencies.items():
+        for dep_name, dep_info in dev_deps.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
         lines.append("```")
 
     # Note
-    if dependencies or peer_dependencies or dev_dependencies:
+    if dependencies:
         lines.append("\n> **Note**: Review code from unfamiliar sources before installing.")
 
     return "\n".join(lines)

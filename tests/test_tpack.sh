@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TPACK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# No static fixture files — generated at runtime to avoid Talon loading them
+# No static fixture files - generated at runtime to avoid Talon loading them
 if [[ -z "${PYTHON:-}" ]]; then
     if python3 --version &>/dev/null 2>&1; then PYTHON=python3
     elif python --version &>/dev/null 2>&1; then PYTHON=python
@@ -90,6 +90,19 @@ assert_file_contains() {
     else
         echo -e "  ${RED}FAIL${NC} $desc (pattern not found: $pattern)"
         ((FAIL++)) || true
+    fi
+}
+
+assert_file_not_contains() {
+    local desc="$1"
+    local file="$2"
+    local pattern="$3"
+    if grep -q "$pattern" "$file" 2>/dev/null; then
+        echo -e "  ${RED}FAIL${NC} $desc (pattern should not be found: $pattern)"
+        ((FAIL++)) || true
+    else
+        echo -e "  ${GREEN}PASS${NC} $desc"
+        ((PASS++)) || true
     fi
 }
 
@@ -223,96 +236,136 @@ run_test pass "tpack pip remove succeeds" tpack pip remove vgamepad "$WORKDIR"
 # After removing the only pip dep, pipDependencies key should be gone
 run_test pass "pip dep removed from manifest" bash -c "! grep -q 'vgamepad' '$WORKDIR/manifest.json'"
 
-# --- Peer Commands ---
+# --- Deps Add/Remove Commands ---
 echo ""
-echo "peer commands:"
-# Add a peer dep by injecting a fake installed package
-FAKE_PEER_DIR="$FAKE_TALON/user/talon-fake-peer"
-mkdir -p "$FAKE_PEER_DIR"
-cat > "$FAKE_PEER_DIR/manifest.json" << 'PEEREOF'
+echo "deps add/remove commands:"
+# Add a dep by injecting a fake installed package
+FAKE_OPT_DIR="$FAKE_TALON/user/talon-fake-optional"
+mkdir -p "$FAKE_OPT_DIR"
+cat > "$FAKE_OPT_DIR/manifest.json" << 'OPTEOF'
 {
-  "name": "talon-fake-peer",
+  "name": "talon-fake-optional",
   "version": "1.2.0",
-  "namespace": "user.fake_peer",
-  "github": "https://github.com/test/talon-fake-peer",
+  "namespace": "user.fake_optional",
+  "github": "https://github.com/test/talon-fake-optional",
   "platforms": ["windows", "linux"],
   "_generator": "talon-pack"
 }
-PEEREOF
+OPTEOF
 
-run_test pass "tpack peer add succeeds" tpack peer add talon-fake-peer "$WORKDIR"
-assert_file_contains "peer dep added to manifest" "$WORKDIR/manifest.json" '"talon-fake-peer"'
-assert_file_contains "peer dep has peerDependencies key" "$WORKDIR/manifest.json" '"peerDependencies"'
-assert_file_contains "peer dep has min_version" "$WORKDIR/manifest.json" '"min_version": "1.2.0"'
-assert_file_contains "peer dep has namespace" "$WORKDIR/manifest.json" '"namespace": "user.fake_peer"'
-assert_file_contains "peer dep has platforms" "$WORKDIR/manifest.json" '"platforms"'
+run_test pass "tpack deps add --optional succeeds" tpack deps add talon-fake-optional "$WORKDIR" --optional --description "Required for testing"
+assert_file_contains "optional dep added to manifest" "$WORKDIR/manifest.json" '"talon-fake-optional"'
+assert_file_contains "optional dep has optional flag" "$WORKDIR/manifest.json" '"optional": true'
+assert_file_contains "optional dep has min_version" "$WORKDIR/manifest.json" '"min_version": "1.2.0"'
+assert_file_contains "optional dep has namespace" "$WORKDIR/manifest.json" '"namespace": "user.fake_optional"'
+assert_file_contains "optional dep has description" "$WORKDIR/manifest.json" '"description": "Required for testing"'
+assert_file_contains "optional dep has platforms" "$WORKDIR/manifest.json" '"platforms"'
 
-run_test pass "tpack peer list succeeds" tpack peer list "$WORKDIR"
-assert_output_contains "peer list shows package" "talon-fake-peer" tpack peer list "$WORKDIR"
+# Adding same dep again should be a noop
+run_test pass "tpack deps add duplicate is noop" tpack deps add talon-fake-optional "$WORKDIR" --optional
 
-# Adding same peer dep again should be a noop
-run_test pass "tpack peer add duplicate is noop" tpack peer add talon-fake-peer "$WORKDIR"
-
-run_test pass "tpack peer remove succeeds" tpack peer remove talon-fake-peer "$WORKDIR"
-run_test pass "peer dep removed from manifest" bash -c "! grep -q 'talon-fake-peer' '$WORKDIR/manifest.json'"
-run_test pass "peerDependencies key removed when empty" bash -c "! grep -q 'peerDependencies' '$WORKDIR/manifest.json'"
+run_test pass "tpack deps remove succeeds" tpack deps remove talon-fake-optional "$WORKDIR"
+run_test pass "dep removed from manifest" bash -c "! grep -q 'talon-fake-optional' '$WORKDIR/manifest.json'"
 
 # Error cases
-run_test fail "peer add nonexistent package fails" tpack peer add talon-nonexistent-pkg "$WORKDIR"
-run_test fail "peer remove nonexistent package fails" tpack peer remove talon-nonexistent-pkg "$WORKDIR"
+run_test fail "deps add nonexistent package fails" tpack deps add talon-nonexistent-pkg "$WORKDIR"
+run_test fail "deps remove nonexistent package fails" tpack deps remove talon-nonexistent-pkg "$WORKDIR"
 
-# --- Peer Deps in Install Block ---
+# --- Dev deps via deps add ---
 echo ""
-echo "peer deps in install block:"
-run_test pass "re-add peer dep for install block test" tpack peer add talon-fake-peer "$WORKDIR"
-assert_output_contains "install-block shows peer dependency label" "peer dependency" tpack generate install-block "$WORKDIR"
-assert_output_contains "install-block shows peer clone comment" "Peer dependencies" tpack generate install-block "$WORKDIR"
-assert_output_contains "install-block shows peer github url" "talon-fake-peer" tpack generate install-block "$WORKDIR"
-assert_output_contains "install-block-tpack shows peer dependency label" "peer dependency" tpack generate install-block-tpack "$WORKDIR"
+echo "dev deps:"
+FAKE_DEV_DIR="$FAKE_TALON/user/talon-fake-dev"
+mkdir -p "$FAKE_DEV_DIR"
+cat > "$FAKE_DEV_DIR/manifest.json" << 'DEVEOF'
+{
+  "name": "talon-fake-dev",
+  "version": "0.5.0",
+  "namespace": "user.fake_dev",
+  "github": "https://github.com/test/talon-fake-dev",
+  "_generator": "talon-pack"
+}
+DEVEOF
+
+run_test pass "tpack deps add --dev succeeds" tpack deps add talon-fake-dev "$WORKDIR" --dev
+assert_file_contains "dev dep has dev_only flag" "$WORKDIR/manifest.json" '"dev_only": true'
+run_test pass "clean up dev dep" tpack deps remove talon-fake-dev "$WORKDIR"
+rm -rf "$FAKE_DEV_DIR"
+
+# --- Deps set ---
+echo ""
+echo "deps set:"
+# Re-add the optional dep for set tests
+run_test pass "add dep for set test" tpack deps add talon-fake-optional "$WORKDIR"
+assert_file_not_contains "dep starts without optional" "$WORKDIR/manifest.json" '"optional": true'
+run_test pass "deps set --optional succeeds" tpack deps set talon-fake-optional "$WORKDIR" --optional
+assert_file_contains "dep now has optional flag" "$WORKDIR/manifest.json" '"optional": true'
+run_test pass "deps set --description succeeds" tpack deps set talon-fake-optional "$WORKDIR" --description "For testing only"
+assert_file_contains "dep now has description" "$WORKDIR/manifest.json" '"description": "For testing only"'
+run_test pass "deps set --no-optional succeeds" tpack deps set talon-fake-optional "$WORKDIR" --no-optional
+assert_file_not_contains "optional flag removed" "$WORKDIR/manifest.json" '"optional": true'
+run_test pass "deps set --no-description succeeds" tpack deps set talon-fake-optional "$WORKDIR" --no-description
+assert_file_not_contains "description removed" "$WORKDIR/manifest.json" '"description": "For testing only"'
+run_test pass "deps set --dev succeeds" tpack deps set talon-fake-optional "$WORKDIR" --dev
+assert_file_contains "dep now has dev_only flag" "$WORKDIR/manifest.json" '"dev_only": true'
+run_test pass "deps set --no-dev succeeds" tpack deps set talon-fake-optional "$WORKDIR" --no-dev
+assert_file_not_contains "dev_only flag removed" "$WORKDIR/manifest.json" '"dev_only": true'
+run_test fail "deps set nonexistent fails" tpack deps set talon-nonexistent "$WORKDIR" --optional
+run_test pass "clean up set test dep" tpack deps remove talon-fake-optional "$WORKDIR"
+
+# --- Optional Deps in Install Block ---
+echo ""
+echo "optional deps in install block:"
+run_test pass "re-add optional dep for install block test" tpack deps add talon-fake-optional "$WORKDIR" --optional --description "Required for testing"
+assert_output_contains "install-block shows optional label" "optional" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block shows optional clone comment" "Optional dependencies" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block shows optional github url" "talon-fake-optional" tpack generate install-block "$WORKDIR"
+assert_output_contains "install-block-tpack shows optional label" "optional" tpack generate install-block-tpack "$WORKDIR"
+assert_output_contains "install-block shows description" "Required for testing" tpack generate install-block "$WORKDIR"
 
 # --- Platform Suffix in Install Block ---
 echo ""
 echo "platform suffix in install block:"
-# The fake peer dep has platforms: ["windows", "linux"], so it should show platform restriction
+# The fake optional dep has platforms: ["windows", "linux"], so it should show platform restriction
 assert_output_contains "install-block shows platform restriction" "Windows" tpack generate install-block "$WORKDIR"
 assert_output_contains "install-block shows platform restriction (Linux)" "Linux" tpack generate install-block "$WORKDIR"
 
-# Clean up peer dep for remaining tests
-run_test pass "clean up peer dep" tpack peer remove talon-fake-peer "$WORKDIR"
-rm -rf "$FAKE_PEER_DIR"
+# Clean up optional dep for remaining tests
+run_test pass "clean up optional dep" tpack deps remove talon-fake-optional "$WORKDIR"
+rm -rf "$FAKE_OPT_DIR"
 
 # --- Deps Command ---
 echo ""
 echo "deps command:"
-# Re-create fake peer package (cleaned up in platform suffix tests)
-FAKE_PEER_DIR="$FAKE_TALON/user/talon-fake-peer"
-mkdir -p "$FAKE_PEER_DIR"
-cat > "$FAKE_PEER_DIR/manifest.json" << 'PEEREOF2'
+# Re-create fake optional package
+FAKE_OPT_DIR="$FAKE_TALON/user/talon-fake-optional"
+mkdir -p "$FAKE_OPT_DIR"
+cat > "$FAKE_OPT_DIR/manifest.json" << 'OPTEOF2'
 {
-  "name": "talon-fake-peer",
+  "name": "talon-fake-optional",
   "version": "1.2.0",
-  "namespace": "user.fake_peer",
-  "github": "https://github.com/test/talon-fake-peer",
+  "namespace": "user.fake_optional",
+  "github": "https://github.com/test/talon-fake-optional",
   "platforms": ["windows", "linux"],
   "_generator": "talon-pack"
 }
-PEEREOF2
-# Re-add peer dep and pip dep to test deps view
-run_test pass "add peer dep for deps test" tpack peer add talon-fake-peer "$WORKDIR"
+OPTEOF2
+# Add optional dep and pip dep to test deps view
+run_test pass "add optional dep for deps test" tpack deps add talon-fake-optional "$WORKDIR" --optional --description "Required for testing"
 run_test pass "add pip dep for deps test" tpack pip add "vgamepad>=1.0.0" "$WORKDIR"
 
 run_test pass "tpack deps succeeds" tpack deps "$WORKDIR"
 assert_output_contains "deps shows Dependencies section" "Dependencies" tpack deps "$WORKDIR"
-assert_output_contains "deps shows Peer Dependencies section" "Peer Dependencies" tpack deps "$WORKDIR"
+assert_output_contains "deps shows Optional Dependencies section" "Optional Dependencies" tpack deps "$WORKDIR"
 assert_output_contains "deps shows Pip Dependencies section" "Pip Dependencies" tpack deps "$WORKDIR"
-assert_output_contains "deps shows peer dep name" "talon-fake-peer" tpack deps "$WORKDIR"
+assert_output_contains "deps shows optional dep name" "talon-fake-optional" tpack deps "$WORKDIR"
 assert_output_contains "deps shows pip dep name" "vgamepad" tpack deps "$WORKDIR"
-assert_output_contains "deps shows install status for peer" "installed\|not installed" tpack deps "$WORKDIR"
+assert_output_contains "deps shows install status" "installed\|not installed" tpack deps "$WORKDIR"
+assert_output_contains "deps shows description" "Required for testing" tpack deps "$WORKDIR"
 
 # Clean up
-run_test pass "remove peer dep after deps test" tpack peer remove talon-fake-peer "$WORKDIR"
+run_test pass "remove optional dep after deps test" tpack deps remove talon-fake-optional "$WORKDIR"
 run_test pass "remove pip dep after deps test" tpack pip remove vgamepad "$WORKDIR"
-rm -rf "$FAKE_PEER_DIR"
+rm -rf "$FAKE_OPT_DIR"
 
 # No deps case
 WORKDIR_NODEPS="$(setup_workdir)"

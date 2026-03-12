@@ -36,8 +36,10 @@ Manifest fields:
 - validateDependencies: Whether to validate dependencies at runtime (default: true)
   - true: Print errors on startup if dependencies not met
   - false: Skip dependency validation
-- dependencies: Required packages with minimum versions (auto-generated)
-- devDependencies: Dev-only dependencies (manually maintained)
+- dependencies: Required packages with minimum versions (auto-generated). Entries support properties:
+  - optional: true - Optional dependency (not required for core functionality, prompted during install)
+  - dev_only: true - Dev-only dependency (for development/testing only)
+  - description: Human-readable description of what this dependency enables
 - contributes: Actions/settings/tags/lists/modes/scopes/captures this package provides (auto-generated)
 - depends: Actions/settings/etc. this package uses (auto-generated)
 - _generator: Tool that generated this manifest (auto-added)
@@ -878,7 +880,9 @@ def resolve_transitive_dependencies(
         dep_name = queue.pop(0)
 
         # Get this dep's own dependencies from the package_deps_map
-        sub_deps = package_deps_map.get(dep_name, {})
+        # Skip optional and dev_only deps - they aren't required transitively
+        sub_deps = {k: v for k, v in package_deps_map.get(dep_name, {}).items()
+                    if not v.get('optional') and not v.get('dev_only')}
 
         for sub_dep_name, sub_dep_info in sub_deps.items():
             if sub_dep_name == current_package:
@@ -906,12 +910,14 @@ def resolve_transitive_dependencies(
                 if 'required_by' in existing and dep_name not in existing['required_by']:
                     existing['required_by'].append(dep_name)
             else:
-                # New transitive dependency
-                new_dep = {
-                    'min_version': sub_version,
-                    'namespace': sub_dep_info.get('namespace', ''),
-                    'required_by': [dep_name],
-                }
+                # New transitive dependency - only include fields with meaningful values
+                new_dep = {}
+                if sub_version and sub_version != '0.0.0':
+                    new_dep['min_version'] = sub_version
+                namespace = sub_dep_info.get('namespace', '')
+                if namespace:
+                    new_dep['namespace'] = namespace
+                new_dep['required_by'] = [dep_name]
                 github = sub_dep_info.get('github', '')
                 if github:
                     new_dep['github'] = github
@@ -1182,7 +1188,7 @@ def prune_manifest_data(manifest_data):
             del manifest_data[field]
 
     # Prune empty dicts
-    for field in ['peerDependencies', 'pipDependencies', 'bundledDependencies']:
+    for field in ['pipDependencies', 'bundledDependencies']:
         if field in manifest_data and isinstance(manifest_data[field], dict) and len(manifest_data[field]) == 0:
             del manifest_data[field]
 
@@ -1454,18 +1460,31 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
             # Track dependencies before filtering
             all_resolved_deps = dict(package_dependencies)
 
-            # Remove any dependencies that are in peerDependencies
+            # Migrate legacy separate dependency dicts into dependencies with properties
+            # peerDependencies -> dependencies with optional: true (peer concept folded into optional)
             existing_peer_deps = existing_manifest_data.get("peerDependencies", {})
-            for pkg_name in existing_peer_deps:
-                package_dependencies.pop(pkg_name, None)
+            for pkg_name, pkg_info in existing_peer_deps.items():
+                if pkg_name not in package_dependencies:
+                    package_dependencies[pkg_name] = dict(pkg_info)
+                package_dependencies[pkg_name]['optional'] = True
 
-            # Remove any dependencies that are in devDependencies
+            # optionalDependencies -> dependencies with optional: true
+            existing_optional_deps = existing_manifest_data.get("optionalDependencies", {})
+            for pkg_name, pkg_info in existing_optional_deps.items():
+                if pkg_name not in package_dependencies:
+                    package_dependencies[pkg_name] = dict(pkg_info)
+                package_dependencies[pkg_name]['optional'] = True
+                if pkg_info.get('description'):
+                    package_dependencies[pkg_name]['description'] = pkg_info['description']
+
+            # devDependencies -> dependencies with dev_only: true
             existing_dev_deps = existing_manifest_data.get("devDependencies", {})
             dev_deps_found = []
-            for pkg_name in existing_dev_deps:
-                if pkg_name in package_dependencies:
-                    dev_deps_found.append(pkg_name)
-                    package_dependencies.pop(pkg_name, None)
+            for pkg_name, pkg_info in existing_dev_deps.items():
+                dev_deps_found.append(pkg_name)
+                if pkg_name not in package_dependencies:
+                    package_dependencies[pkg_name] = dict(pkg_info)
+                package_dependencies[pkg_name]['dev_only'] = True
 
             # Auto-detect bundled dependencies from nested manifest.json files
             bundled_dependencies = {}
@@ -1529,11 +1548,11 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
                         print(base_info)
                     print()
                 elif dev_deps_found:
-                    print(f"Package dependencies (covered by devDependencies):")
+                    print(f"Package dependencies (dev_only):")
                     for pkg_name in dev_deps_found:
                         dev_dep_info = existing_dev_deps[pkg_name]
                         version = dev_dep_info.get('min_version', 'unknown') if isinstance(dev_dep_info, dict) else dev_dep_info
-                        print(f"  - {pkg_name} ({version}) [devDependency]")
+                        print(f"  - {pkg_name} ({version}) [dev_only]")
                     print()
                 elif bundled_deps_found:
                     print(f"Package dependencies (covered by bundledDependencies):")
@@ -1682,8 +1701,6 @@ def create_or_update_manifest(skip_version_errors: bool = False, dry_run: bool =
 
             new_manifest_data.update({
                 "dependencies": package_dependencies,
-                "peerDependencies": existing_manifest_data.get("peerDependencies", {}),
-                "devDependencies": existing_manifest_data.get("devDependencies", {}),
                 "bundledDependencies": bundled_dependencies,
                 "pipDependencies": pip_dependencies,
                 "contributes": vars(new_entity_data.contributes),

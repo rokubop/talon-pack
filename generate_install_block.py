@@ -62,7 +62,7 @@ def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
             lines.append("")
         for pip_name, pip_info in optional.items():
             description = pip_info.get('description', '')
-            desc_suffix = f" — {description}" if description else ""
+            desc_suffix = f" - {description}" if description else ""
             lines.append(f"**Optional**: `{pip_name}`{desc_suffix}")
             lines.append("")
             lines.extend(_pip_install_block([_pip_spec(pip_name, pip_info)]))
@@ -73,15 +73,35 @@ def generate_pip_install_commands(pip_dependencies: dict) -> str | None:
     return "\n".join(lines)
 
 
+def _split_dependencies(dependencies: dict) -> tuple[dict, dict, dict, dict]:
+    """Split dependencies into (required_direct, transitive, optional, dev_only) by properties."""
+    required_direct = {}
+    transitive = {}
+    optional = {}
+    dev_only = {}
+    for dep_name, dep_info in dependencies.items():
+        if dep_info.get('dev_only'):
+            dev_only[dep_name] = dep_info
+        elif dep_info.get('optional'):
+            optional[dep_name] = dep_info
+        elif dep_info.get('required_by'):
+            transitive[dep_name] = dep_info
+        else:
+            required_direct[dep_name] = dep_info
+    return required_direct, transitive, optional, dev_only
+
+
 def generate_installation_markdown(manifest: dict) -> str:
     """Generate installation section markdown from manifest data."""
     github_url = manifest.get('github', '')
     dependencies = manifest.get('dependencies', {})
-    peer_dependencies = manifest.get('peerDependencies', {})
-    dev_dependencies = manifest.get('devDependencies', {})
     bundled_dependencies = manifest.get('bundledDependencies', {})
     pip_dependencies = manifest.get('pipDependencies', {})
     requires = manifest.get('requires', [])
+
+    # Split dependencies by properties
+    required_direct, transitive_deps, optional_deps, dev_deps = _split_dependencies(dependencies)
+    required_deps = {**required_direct, **transitive_deps}
 
     # Map requirement keys to user-friendly descriptions
     requirement_descriptions = {
@@ -97,11 +117,9 @@ def generate_installation_markdown(manifest: dict) -> str:
 
     # Combine Requirements and Dependencies sections
     has_requirements = bool(requires)
-    has_dependencies = bool(dependencies)
-    has_peer = bool(peer_dependencies)
     has_bundled = bool(bundled_dependencies)
     has_pip = bool(pip_dependencies)
-    has_any_deps = has_requirements or has_dependencies or has_peer or has_bundled or has_pip
+    has_any_deps = has_requirements or bool(dependencies) or has_bundled or has_pip
 
     if has_any_deps:
         lines.append("\n### Dependencies")
@@ -119,19 +137,9 @@ def generate_installation_markdown(manifest: dict) -> str:
                 description = requirement_descriptions.get(req, f"**{req}**")
                 lines.append(f"- {description}")
 
-        # Split dependencies into direct and transitive
-        direct_deps = {}
-        transitive_deps = {}
-        if has_dependencies:
-            for dep_name, dep_info in dependencies.items():
-                if dep_info.get('required_by'):
-                    transitive_deps[dep_name] = dep_info
-                else:
-                    direct_deps[dep_name] = dep_info
-
-        # Add direct dependencies
-        if direct_deps:
-            for dep_name, dep_info in direct_deps.items():
+        # Add direct required dependencies
+        if required_direct:
+            for dep_name, dep_info in required_direct.items():
                 version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
@@ -155,14 +163,22 @@ def generate_installation_markdown(manifest: dict) -> str:
                 else:
                     lines.append(f"- **{dep_name}**{ver_str}{plat}{suffix}")
 
-        # Add peer dependencies
-        if has_peer:
-            for dep_name, dep_info in peer_dependencies.items():
+        # Add optional dependencies
+        if optional_deps:
+            for dep_name, dep_info in optional_deps.items():
                 version = dep_info.get('min_version') or dep_info.get('version', '')
                 github = dep_info.get('github', '')
                 plat = _platform_suffix(dep_info)
-                suffix = " *(peer dependency)*"
+                description = dep_info.get('description', '')
+                required_by = dep_info.get('required_by', [])
+                if description:
+                    desc_suffix = f" - {description}"
+                elif required_by:
+                    desc_suffix = f" - required by {', '.join(required_by)}"
+                else:
+                    desc_suffix = ""
                 ver_str = f" (v{version}+)" if version else ""
+                suffix = f" *(optional)*{desc_suffix}"
                 if github:
                     lines.append(f"- [**{dep_name}**]({github}){ver_str}{plat}{suffix}")
                 else:
@@ -223,10 +239,10 @@ def generate_installation_markdown(manifest: dict) -> str:
     # Step: Clone repositories
     if use_numbered_steps:
         lines.append(f"\n### {step}. Clone Repositories")
-    elif has_any_deps or dev_dependencies:
+    elif has_any_deps or dev_deps:
         lines.append("\n### Install")
 
-    if dependencies or peer_dependencies:
+    if required_deps or optional_deps:
         lines.append("\nClone the dependencies and this repo into your [Talon](https://talonvoice.com/) user directory:")
     else:
         lines.append("\nClone this repo into your [Talon](https://talonvoice.com/) user directory:")
@@ -238,42 +254,35 @@ def generate_installation_markdown(manifest: dict) -> str:
     lines.append("# Windows")
     lines.append("cd ~/AppData/Roaming/talon/user")
 
-    # Dependencies clones
-    if dependencies:
+    # Required dependencies clones
+    if required_direct:
         lines.append("")
         lines.append("# Dependencies")
-        for dep_name, dep_info in dependencies.items():
-            required_by = dep_info.get('required_by')
-            if required_by:
-                continue  # Show transitive deps separately
+        for dep_name, dep_info in required_direct.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
 
-        # Transitive dependencies
-        has_transitive = any(dep_info.get('required_by') for dep_info in dependencies.values())
-        if has_transitive:
-            lines.append("")
-            lines.append("# Also required (by dependencies above)")
-            for dep_name, dep_info in dependencies.items():
-                required_by = dep_info.get('required_by')
-                if not required_by:
-                    continue
-                github = dep_info.get('github', '')
-                if github:
-                    lines.append(f"git clone {github}")
-
-    # Peer dependencies clones
-    if peer_dependencies:
+    # Transitive dependencies
+    if transitive_deps:
         lines.append("")
-        lines.append("# Peer dependencies (recommended)")
-        for dep_name, dep_info in peer_dependencies.items():
+        lines.append("# Also required (by dependencies above)")
+        for dep_name, dep_info in transitive_deps.items():
+            github = dep_info.get('github', '')
+            if github:
+                lines.append(f"git clone {github}")
+
+    # Optional dependencies clones
+    if optional_deps:
+        lines.append("")
+        lines.append("# Optional dependencies")
+        for dep_name, dep_info in optional_deps.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
 
     # This repo
-    if dependencies or peer_dependencies or dev_dependencies:
+    if required_deps or optional_deps or dev_deps:
         lines.append("")
         lines.append("# This repo")
     else:
@@ -285,12 +294,12 @@ def generate_installation_markdown(manifest: dict) -> str:
 
     lines.append("```")
 
-    # Dev dependencies section (at the bottom - these are optional)
-    if dev_dependencies:
+    # Dev dependencies section (at the bottom)
+    if dev_deps:
         lines.append("\n### Development Dependencies")
         lines.append("\nOptional dependencies for development and testing:")
 
-        for dep_name, dep_info in dev_dependencies.items():
+        for dep_name, dep_info in dev_deps.items():
             version = dep_info.get('min_version') or dep_info.get('version', '')
             github = dep_info.get('github', '')
             version_suffix = f" (v{version}+)" if version else ""
@@ -300,14 +309,14 @@ def generate_installation_markdown(manifest: dict) -> str:
                 lines.append(f"- **{dep_name}**{version_suffix}")
 
         lines.append("\n```sh")
-        for dep_name, dep_info in dev_dependencies.items():
+        for dep_name, dep_info in dev_deps.items():
             github = dep_info.get('github', '')
             if github:
                 lines.append(f"git clone {github}")
         lines.append("```")
 
     # Note
-    if dependencies or peer_dependencies or dev_dependencies:
+    if dependencies:
         lines.append("\n> **Note**: Review code from unfamiliar sources before installing.")
 
     return "\n".join(lines)
