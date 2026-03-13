@@ -271,7 +271,11 @@ main() {
             echo ""
             if confirm "Update tab completion?"; then
                 # Remove old completion block and add new one
-                sed -i '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/d' "$rc_file"
+                if [[ "$(uname -s)" == "Darwin" ]]; then
+                    sed -i '' '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/d' "$rc_file"
+                else
+                    sed -i '/# --- tpack tab completion ---/,/# --- end tpack tab completion ---/d' "$rc_file"
+                fi
                 if [[ "$shell" == "zsh" ]]; then
                     zsh_completion >> "$rc_file"
                 else
