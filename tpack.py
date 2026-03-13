@@ -1244,6 +1244,29 @@ def install_from_url(url: str, dry_run: bool = False, auto_yes: bool = False) ->
     # Fetch manifest from GitHub to show full plan before cloning
     remote_manifest = fetch_remote_manifest(url)
 
+    if not remote_manifest:
+        # SSL or network failure - clone first, then use local manifest for deps
+        print(f"\n{YELLOW}Warning: Could not fetch remote manifest. Will clone first, then resolve dependencies.{RESET}")
+        target = os.path.join(talon_user_dir, repo_name)
+        print(f"\n  Cloning {repo_name}...")
+        try:
+            result = subprocess.run(
+                ["git", "clone", url, target],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print(f"  {GREEN}Cloned {repo_name}{RESET}")
+                manifest_path = Path(target) / "manifest.json"
+                if manifest_path.exists():
+                    return install_from_manifest(Path(target), dry_run, auto_yes)
+                return True
+            else:
+                print(f"  {RED}Failed to clone {repo_name}: {result.stderr.strip()}{RESET}")
+                return False
+        except Exception as e:
+            print(f"  {RED}Error cloning {repo_name}: {e}{RESET}")
+            return False
+
     to_clone = [(repo_name, url)]
     pip_to_install = []
 
