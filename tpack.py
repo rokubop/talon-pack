@@ -1043,10 +1043,10 @@ def install_command(target: str | None, directory: Path, dry_run: bool = False, 
             print(f"       tpack install <github_url>     Install a package")
             return False
 
-    return install_from_manifest(directory, dry_run, auto_yes)
+    return install_from_manifest(directory, dry_run, auto_yes, search_dir)
 
 
-def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool = False) -> bool:
+def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool = False, search_dir: str = None) -> bool:
     """Install dependencies listed in a manifest.json."""
     from diff_utils import GREEN, RED, CYAN, DIM, YELLOW, RESET
 
