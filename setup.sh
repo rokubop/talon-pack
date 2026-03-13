@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 info()  { echo -e "${CYAN}$*${NC}"; }
 success() { echo -e "${GREEN}$*${NC}"; }
-warn()  { echo -e "${YELLOW}$*${NC}"; }
+warn()  { echo -e "${YELLOW}$*${NC}" >&2; }
 error() { echo -e "${RED}$*${NC}" >&2; }
 
 # --- Detect OS / environment ---
@@ -91,7 +91,7 @@ build_tpack_cmd() {
     esac
 
     if [[ "$shell" == "zsh" ]]; then
-        echo "tpack() { \"$python\" \"$tpack\" \"\$@\"; }"
+        echo "function tpack { \"$python\" \"$tpack\" \"\$@\"; }"
     else
         echo "alias tpack=\"'$python' '$tpack'\""
     fi
@@ -241,7 +241,7 @@ main() {
     local has_alias=false
     local has_completion=false
     if [[ -f "$rc_file" ]]; then
-        grep -qE 'alias tpack=|tpack\(\)' "$rc_file" 2>/dev/null && has_alias=true
+        grep -qE 'alias tpack=|function tpack' "$rc_file" 2>/dev/null && has_alias=true
         grep -q '# --- tpack tab completion ---' "$rc_file" 2>/dev/null && has_completion=true
     fi
 

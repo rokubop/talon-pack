@@ -48,11 +48,11 @@ FAKE_RC="$(mktemp)"
 cat >> "$FAKE_RC" <<'EOF'
 
 # --- tpack ---
-tpack() { "/path/to/python3" "/path/to/tpack.py" "$@"; }
+function tpack { "/path/to/python3" "/path/to/tpack.py" "$@"; }
 # --- end tpack ---
 EOF
 
-assert_ok "tpack function written to rc file" grep -qE 'alias tpack=|tpack\(\)' "$FAKE_RC"
+assert_ok "tpack function written to rc file" grep -qE 'alias tpack=|function tpack' "$FAKE_RC"
 assert_ok "tpack block has markers" grep -q '# --- tpack ---' "$FAKE_RC"
 
 # --- Noop detection ---
@@ -61,7 +61,7 @@ echo "noop detection:"
 
 # Check that the file has the tpack marker (simulating what setup.sh checks)
 has_alias=false
-grep -qE 'alias tpack=|tpack\(\)' "$FAKE_RC" && has_alias=true
+grep -qE 'alias tpack=|function tpack' "$FAKE_RC" && has_alias=true
 assert_ok "detects existing tpack command" $has_alias
 
 has_completion=false
