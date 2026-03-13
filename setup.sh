@@ -154,11 +154,15 @@ _tpack() {
       status) _describe 'status' status_values ;;
       duplicate-check) _describe 'value' duplicate_check_values ;;
       platform) _describe 'platform command' platform_cmds ;;
+      *) _files -/ ;;
     esac
   elif (( CURRENT == 4 )); then
     case ${words[2]} in
       platform) _describe 'platform' platform_values ;;
+      *) _files -/ ;;
     esac
+  else
+    _files -/
   fi
 }
 # Ensure zsh completion system is loaded (not all shells do this by default)
@@ -196,11 +200,15 @@ _tpack() {
       status) COMPREPLY=($(compgen -W "$status_values" -- "$cur")) ;;
       duplicate-check) COMPREPLY=($(compgen -W "$duplicate_check_values" -- "$cur")) ;;
       platform) COMPREPLY=($(compgen -W "$platform_cmds" -- "$cur")) ;;
+      *) COMPREPLY=($(compgen -d -- "$cur")) ;;
     esac
   elif (( COMP_CWORD == 3 )); then
     case "${COMP_WORDS[1]}" in
       platform) COMPREPLY=($(compgen -W "$platform_values" -- "$cur")) ;;
+      *) COMPREPLY=($(compgen -d -- "$cur")) ;;
     esac
+  else
+    COMPREPLY=($(compgen -d -- "$cur"))
   fi
 }
 complete -F _tpack tpack
