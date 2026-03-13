@@ -166,6 +166,8 @@ _tpack() {
     esac
   fi
 }
+# Ensure zsh completion system is loaded (not all shells do this by default)
+autoload -Uz compinit && compinit -C 2>/dev/null
 compdef _tpack tpack
 # --- end tpack tab completion ---
 COMPLETION
