@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Talon Pack Setup Script
-# Detects OS/shell, adds the tpack alias (and optional tab completion),
+# Detects OS/shell, adds the tpack command (and optional tab completion),
 # shows a diff of changes, and sources the config file.
 
 set -euo pipefail
@@ -44,62 +44,57 @@ detect_shell() {
     esac
 }
 
-# --- Find the script's own directory ---
-get_script_dir() {
-    local dir
-    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    echo "$dir"
-}
-
-# --- Build the alias command ---
-build_alias() {
+# --- Build the tpack command (function for zsh, alias for bash) ---
+build_tpack_cmd() {
     local os="$1"
-    local script_dir="$2"
+    local shell="$2"
+    local python tpack
 
     case "$os" in
         mac)
-            local python="/Applications/Talon.app/Contents/Resources/python/bin/python3"
-            local tpack="$HOME/.talon/talon-pack/tpack.py"
+            python="/Applications/Talon.app/Contents/Resources/python/bin/python3"
+            tpack="$HOME/.talon/talon-pack/tpack.py"
             if [[ ! -f "$python" ]]; then
                 python="python3"
                 warn "Talon Python not found at default Mac path, falling back to system python3"
             fi
-            echo "alias tpack=\"\\\"$python\\\" \\\"$tpack\\\"\""
             ;;
         linux)
-            local python="$HOME/.talon/bin/python3"
-            local tpack="$HOME/.talon/talon-pack/tpack.py"
+            python="$HOME/.talon/bin/python3"
+            tpack="$HOME/.talon/talon-pack/tpack.py"
             if [[ ! -f "$python" ]]; then
                 python="python3"
                 warn "Talon Python not found at ~/.talon/bin/python3, falling back to system python3"
             fi
-            echo "alias tpack=\"\\\"$python\\\" \\\"$tpack\\\"\""
             ;;
         wsl)
-            local python="/mnt/c/Program Files/Talon/python.exe"
-            # Convert script_dir to Windows path for the python arg
+            python="/mnt/c/Program Files/Talon/python.exe"
             local win_user
             win_user="$(cmd.exe /C "echo %USERNAME%" 2>/dev/null | tr -d '\r' || true)"
             if [[ -z "$win_user" ]]; then
                 win_user="$(basename "$(wslpath "$(wslvar USERPROFILE 2>/dev/null || true)")" 2>/dev/null || true)"
             fi
-            local tpack="C:/Users/$win_user/AppData/Roaming/talon/talon-pack/tpack.py"
+            tpack="C:/Users/$win_user/AppData/Roaming/talon/talon-pack/tpack.py"
             if [[ ! -f "$python" ]]; then
                 warn "Talon python.exe not found at '$python'"
-                warn "You may need to adjust the alias path manually"
+                warn "You may need to adjust the path manually"
             fi
-            echo "alias tpack=\"'$python' '$tpack'\""
             ;;
         gitbash)
-            local python="'/c/Program Files/Talon/python.exe'"
-            local tpack="~/AppData/Roaming/talon/talon-pack/tpack.py"
-            echo "alias tpack=\"$python $tpack\""
+            python="'/c/Program Files/Talon/python.exe'"
+            tpack="~/AppData/Roaming/talon/talon-pack/tpack.py"
             ;;
         *)
-            error "Could not detect OS. Please set up the alias manually (see README.md)."
+            error "Could not detect OS. Please set up manually (see README.md)."
             exit 1
             ;;
     esac
+
+    if [[ "$shell" == "zsh" ]]; then
+        echo "tpack() { \"$python\" \"$tpack\" \"\$@\"; }"
+    else
+        echo "alias tpack=\"'$python' '$tpack'\""
+    fi
 }
 
 # --- Shell config file ---
@@ -232,12 +227,11 @@ main() {
     echo "────────────────────────────────────"
     echo ""
 
-    local os shell rc_file alias_cmd script_dir
+    local os shell rc_file alias_cmd
     os="$(detect_os)"
     shell="$(detect_shell)"
-    script_dir="$(get_script_dir)"
     rc_file="$(get_rc_file "$shell")"
-    alias_cmd="$(build_alias "$os" "$script_dir")"
+    alias_cmd="$(build_tpack_cmd "$os" "$shell")"
 
     info "Detected: OS=$os  Shell=$shell"
     info "Config:   $rc_file"
@@ -247,7 +241,7 @@ main() {
     local has_alias=false
     local has_completion=false
     if [[ -f "$rc_file" ]]; then
-        grep -q 'alias tpack=' "$rc_file" 2>/dev/null && has_alias=true
+        grep -qE 'alias tpack=|tpack\(\)' "$rc_file" 2>/dev/null && has_alias=true
         grep -q '# --- tpack tab completion ---' "$rc_file" 2>/dev/null && has_completion=true
     fi
 
@@ -293,7 +287,7 @@ main() {
             return 0
         fi
 
-        success "Already set up! Alias and tab completion found in $rc_file"
+        success "Already set up! tpack command and tab completion found in $rc_file"
         echo ""
         return 0
     fi
@@ -308,24 +302,24 @@ main() {
     backup="$(mktemp)"
     cp "$rc_file" "$backup"
 
-    # --- Alias ---
+    # --- tpack command ---
     if $has_alias; then
-        success "Alias already exists in $rc_file (skipping)"
+        success "tpack command already exists in $rc_file (skipping)"
         echo ""
     else
-        echo -e "The following alias will be added to ${BOLD}$rc_file${NC}:"
+        echo -e "The following will be added to ${BOLD}$rc_file${NC}:"
         echo ""
         echo -e "  ${GREEN}$alias_cmd${NC}"
         echo ""
 
-        if ! confirm "Add alias?"; then
-            info "Alias skipped."
+        if ! confirm "Add tpack command?"; then
+            info "Skipped."
         else
             echo "" >> "$rc_file"
-            echo "# --- tpack alias ---" >> "$rc_file"
+            echo "# --- tpack ---" >> "$rc_file"
             echo "$alias_cmd" >> "$rc_file"
-            echo "# --- end tpack alias ---" >> "$rc_file"
-            success "Alias added."
+            echo "# --- end tpack ---" >> "$rc_file"
+            success "tpack command added."
         fi
         echo ""
     fi

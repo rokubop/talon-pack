@@ -39,30 +39,30 @@ assert_ok "setup.sh is valid bash" bash -n "$TPACK_DIR/setup.sh"
 # We test the auto-detection functions in isolation
 
 echo ""
-echo "setup.sh auto-adds alias (simulated):"
+echo "setup.sh auto-adds tpack command (simulated):"
 
 # Create a temp rc file and simulate what setup.sh would append
 FAKE_RC="$(mktemp)"
 
-# Simulate adding the alias block
+# Simulate adding the tpack command block (function for zsh)
 cat >> "$FAKE_RC" <<'EOF'
 
-# --- tpack alias ---
-alias tpack="python3 /path/to/tpack.py"
-# --- end tpack alias ---
+# --- tpack ---
+tpack() { "/path/to/python3" "/path/to/tpack.py" "$@"; }
+# --- end tpack ---
 EOF
 
-assert_ok "alias written to rc file" grep -q 'alias tpack=' "$FAKE_RC"
-assert_ok "alias block has markers" grep -q '# --- tpack alias ---' "$FAKE_RC"
+assert_ok "tpack function written to rc file" grep -qE 'alias tpack=|tpack\(\)' "$FAKE_RC"
+assert_ok "tpack block has markers" grep -q '# --- tpack ---' "$FAKE_RC"
 
 # --- Noop detection ---
 echo ""
 echo "noop detection:"
 
-# Check that the file has the alias marker (simulating what setup.sh checks)
+# Check that the file has the tpack marker (simulating what setup.sh checks)
 has_alias=false
-grep -q 'alias tpack=' "$FAKE_RC" && has_alias=true
-assert_ok "detects existing alias" $has_alias
+grep -qE 'alias tpack=|tpack\(\)' "$FAKE_RC" && has_alias=true
+assert_ok "detects existing tpack command" $has_alias
 
 has_completion=false
 grep -q '# --- tpack tab completion ---' "$FAKE_RC" && has_completion=true || true
