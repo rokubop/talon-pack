@@ -645,7 +645,7 @@ def scan_installed_versions(talon_user_dir: str) -> dict:
             try:
                 with open(os.path.join(root, 'manifest.json'), 'r', encoding='utf-8') as f:
                     manifest = json.load(f)
-                if manifest.get('_generator') != 'talon-pack':
+                if manifest.get('_generator') not in ('talon-pack', 'talon-manifest-generator'):
                     continue
                 name = manifest.get('name')
                 version = manifest.get('version')
@@ -1013,7 +1013,7 @@ def fetch_remote_manifest(url: str) -> dict | None:
             req = Request(raw_url, headers={"User-Agent": "talon-pack"})
             with urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-                if data.get('_generator') == 'talon-pack':
+                if data.get('_generator') in ('talon-pack', 'talon-manifest-generator'):
                     return data
         except (HTTPError, URLError, json.JSONDecodeError, Exception):
             continue
