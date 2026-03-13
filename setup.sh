@@ -81,8 +81,8 @@ build_tpack_cmd() {
             fi
             ;;
         gitbash)
-            python="'/c/Program Files/Talon/python.exe'"
-            tpack="~/AppData/Roaming/talon/talon-pack/tpack.py"
+            python="/c/Program Files/Talon/python.exe"
+            tpack="$HOME/AppData/Roaming/talon/talon-pack/tpack.py"
             ;;
         *)
             error "Could not detect OS. Please set up manually (see README.md)."
@@ -90,11 +90,7 @@ build_tpack_cmd() {
             ;;
     esac
 
-    if [[ "$shell" == "zsh" ]]; then
-        echo "function tpack { \"$python\" \"$tpack\" \"\$@\"; }"
-    else
-        echo "alias tpack=\"'$python' '$tpack'\""
-    fi
+    echo "function tpack { \"$python\" \"$tpack\" \"\$@\"; }"
 }
 
 # --- Shell config file ---
