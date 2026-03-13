@@ -1007,6 +1007,7 @@ def fetch_remote_manifest(url: str) -> dict | None:
         return None
     owner, repo = parsed
 
+    last_error = None
     for branch in ("main", "master"):
         raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/manifest.json"
         try:
@@ -1015,8 +1016,11 @@ def fetch_remote_manifest(url: str) -> dict | None:
                 data = json.loads(resp.read().decode('utf-8'))
                 if data.get('_generator') in ('talon-pack', 'talon-manifest-generator'):
                     return data
-        except (HTTPError, URLError, json.JSONDecodeError, Exception):
+        except (HTTPError, URLError, json.JSONDecodeError, Exception) as e:
+            last_error = e
             continue
+    if last_error:
+        print(f"  Warning: Could not fetch remote manifest for {owner}/{repo}: {last_error}", file=sys.stderr)
     return None
 
 
