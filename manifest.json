@@ -2,7 +2,7 @@
   "name": "talon-pack",
   "title": "Talon Pack",
   "description": "CLI tool that helps you manage Talon repositories. Auto-detect contributions, manage versioning, and install/update repos and their dependencies.",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "status": "preview",
   "namespace": "",
   "github": "https://github.com/rokubop/talon-pack",
