@@ -609,6 +609,7 @@ def parse_talon_file(file_path: str, all_entities: AllEntities) -> None:
 def apply_frozen_fields(new_manifest: dict, existing_manifest: dict, frozen_fields: set):
     """
     Apply frozen fields from existing manifest to new manifest.
+    Preserves existing values and prevents creation of fields that don't already exist.
     Handles both top-level fields (e.g., "requires") and sub-fields (e.g., "contributes.actions").
     """
     for frozen in frozen_fields:
@@ -620,10 +621,14 @@ def apply_frozen_fields(new_manifest: dict, existing_manifest: dict, frozen_fiel
                     new_manifest[parent] = {}
                 if isinstance(existing_manifest[parent], dict):
                     new_manifest[parent][child] = existing_manifest[parent][child]
+            elif parent in new_manifest and isinstance(new_manifest[parent], dict) and child in new_manifest[parent]:
+                del new_manifest[parent][child]
         else:
             # Handle top-level field like "requires"
             if frozen in existing_manifest:
                 new_manifest[frozen] = existing_manifest[frozen]
+            elif frozen in new_manifest:
+                del new_manifest[frozen]
 
 # ==============================================================================
 # FOLDER PROCESSING
