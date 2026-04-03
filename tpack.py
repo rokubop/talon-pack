@@ -1080,9 +1080,18 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
         # Determine what needs to be installed (required deps only)
         to_clone = []
         already_installed = []
+        needs_update = []
         for dep_name, dep_info in sorted(required_deps.items()):
             github_url = dep_info.get('github', '')
             if dep_name in installed:
+                inst_ver = installed[dep_name].get("version", "")
+                min_ver = dep_info.get('min_version', '')
+                if inst_ver and min_ver:
+                    inst_parts = [int(x) for x in inst_ver.split('.')]
+                    min_parts = [int(x) for x in min_ver.split('.')]
+                    if inst_parts < min_parts:
+                        needs_update.append((dep_name, inst_ver, min_ver))
+                        continue
                 already_installed.append(dep_name)
             elif github_url:
                 to_clone.append((dep_name, github_url))
@@ -1110,12 +1119,18 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
         if already_installed:
             for name in already_installed:
                 print(f"  {DIM}{name} - already installed{RESET}")
+        if needs_update:
+            for name, inst_ver, min_ver in needs_update:
+                print(f"  {YELLOW}{name} {inst_ver} installed (needs >={min_ver}){RESET}")
         if pip_already_installed:
             for name in pip_already_installed:
                 print(f"  {DIM}{name} (pip) - already installed{RESET}")
 
         if not to_clone and not pip_to_install:
-            print(f"\n{DIM}All dependencies are already installed.{RESET}")
+            if needs_update:
+                print(f"\n{YELLOW}Some dependencies are outdated. Run 'tpack update' to update them.{RESET}")
+            else:
+                print(f"\n{DIM}All dependencies are already installed.{RESET}")
             return True
 
         if to_clone:
@@ -1212,6 +1227,9 @@ def install_from_manifest(directory: Path, dry_run: bool = False, auto_yes: bool
                         except Exception as e:
                             print(f"  {RED}Error cloning {dep_name}: {e}{RESET}")
                             success = False
+
+        if needs_update:
+            print(f"\n{YELLOW}Some dependencies are outdated. Run 'tpack update' to update them.{RESET}")
 
         print()
         return success
