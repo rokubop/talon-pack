@@ -167,6 +167,10 @@ tpack minor           # 1.0.0 -> 1.1.0
 tpack major           # 1.0.0 -> 2.0.0
 ```
 
+### Releasing
+
+`tpack release` drafts notes from the commits since the last tag and opens them in your git editor. What you save becomes the annotated tag message and the GitHub release body. With `--yes` the draft is used as is.
+
 ---
 
 ## Reference
