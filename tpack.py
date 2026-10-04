@@ -1734,17 +1734,58 @@ def release_command(directory: Path, dry_run: bool = False, auto_yes: bool = Fal
         if len(lines) > 20:
             print(f"    {DIM}... and {len(lines) - 20} more{RESET}")
 
+    import release_notes
+
+    draft = release_notes.draft(tag, prev_tag, release_notes.subjects(directory, log_range))
     if dry_run:
+        print(f"\n  Draft notes:")
+        for line in release_notes.clean(draft).splitlines():
+            print(f"    {line}")
         print(f"\n  {DIM}(dry run){RESET}")
         return True
 
-    if not confirm_action("\nProceed?", auto_yes):
-        print(f"{DIM}Release cancelled.{RESET}")
-        return False
+    # Notes first: edited in your git editor, or the draft as is with --yes
+    fd, name = tempfile.mkstemp(prefix=f"tpack-{tag}-", suffix=".md")
+    os.close(fd)
+    notes_file = Path(name)
+    try:
+        notes_file.write_text(draft, encoding="utf-8")
+        if not auto_yes:
+            print(f"\n  {DIM}Opening release notes in your editor...{RESET}")
+            if not release_notes.edit(notes_file, directory):
+                print(f"{YELLOW}No editor found (set $EDITOR or git config core.editor), "
+                      f"or it exited with an error.{RESET}")
+                return False
+        notes = release_notes.clean(notes_file.read_text(encoding="utf-8"))
+        if not notes:
+            print(f"{DIM}Empty notes. Release cancelled.{RESET}")
+            return False
+        notes_file.write_text(notes + "\n", encoding="utf-8")
 
-    # Create tag and release
+        print(f"\n  Release notes:")
+        for line in notes.splitlines():
+            print(f"    {line}")
+        print(f"\n  {CYAN}Commands:{RESET}")
+        print(f"    git tag -a {tag} -F <notes>")
+        print(f"    git push origin {tag}")
+        print(f"    gh release create {tag} --title {tag} --notes-file <notes>")
+
+        if not confirm_action("\nProceed?", auto_yes):
+            print(f"{DIM}Release cancelled.{RESET}")
+            return False
+
+        return _tag_and_release(directory, tag, notes_file)
+    finally:
+        notes_file.unlink(missing_ok=True)
+
+
+def _tag_and_release(directory: Path, tag: str, notes_file: Path) -> bool:
+    """An annotated tag carrying the notes, pushed, and a GitHub release
+    with the same notes."""
+    from diff_utils import GREEN, RED, RESET
+
     tag_result = subprocess.run(
-        ["git", "tag", tag],
+        ["git", "tag", "-a", tag, "-F", str(notes_file)],
         capture_output=True, text=True, cwd=str(directory)
     )
     if tag_result.returncode != 0:
@@ -1760,7 +1801,7 @@ def release_command(directory: Path, dry_run: bool = False, auto_yes: bool = Fal
         return False
 
     release_result = subprocess.run(
-        ["gh", "release", "create", tag, "--title", tag, "--generate-notes"],
+        ["gh", "release", "create", tag, "--title", tag, "--notes-file", str(notes_file)],
         capture_output=True, text=True, cwd=str(directory)
     )
     if release_result.returncode != 0:
